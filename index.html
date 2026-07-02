@@ -546,10 +546,6 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>預估工時（小時，選填）</label>
-                        <input type="number" id="workEstHours" min="0.5" step="0.5" placeholder="例如：4">
-                    </div>
-                    <div class="form-group">
                         <label>特別標記</label>
                         <select id="workFlag" onchange="document.getElementById('workHelperGroup').style.display = this.value === '隊友協助' ? 'block' : 'none'">
                             <option value="" selected>無</option>
@@ -1070,7 +1066,6 @@
 
             html += `<span class="work-status ${statusClass}">${work.status}</span>`;
             if (work.priority) html += ` <span style="font-size: 12px; color: #666;">優先度: ${work.priority}</span>`;
-            if (work.estHours) html += ` <span style="font-size: 12px; color: #666;">⏳ 預估 ${work.estHours} 小時</span>`;
 
             if (work.flag === '主管注意') html += ` <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">🚨 需主管注意</span>`;
             if (work.flag === '隊友協助') html += ` <span style="background: #17a2b8; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">🤝 需 ${staffNames[work.helper] || '隊友'} 協助</span>`;
@@ -1144,14 +1139,13 @@
                     const note = document.getElementById('workNote').value;
                     const flag = document.getElementById('workFlag').value;
                     const helper = flag === '隊友協助' ? document.getElementById('workHelper').value : '';
-                    const estHours = parseFloat(document.getElementById('workEstHours').value);
 
                     if (!title.trim()) {
                         alert('請填入工作名稱');
                         return;
                     }
 
-                    addWork(currentUser, title, priority, note, flag, helper, estHours);
+                    addWork(currentUser, title, priority, note, flag, helper);
                     form.reset();
                     document.getElementById('workHelperGroup').style.display = 'none';
                     renderStaffView(currentUser);
@@ -1188,7 +1182,6 @@
                         '狀態': work.status,
                         '接案時間': work.createdAt || '',
                         '完成時間': work.completedAt || '',
-                        '預估工時(小時)': work.estHours || '',
                         '耗時': duration,
                         '備註': work.note || '',
                         '主管留言': work.managerNote || '',
@@ -1215,7 +1208,6 @@
                 { wch: 8 },   // 狀態
                 { wch: 18 },  // 接案時間
                 { wch: 18 },  // 完成時間
-                { wch: 14 },  // 預估工時
                 { wch: 12 },  // 耗時
                 { wch: 30 },  // 備註
                 { wch: 30 },  // 主管留言
@@ -1264,7 +1256,7 @@
             attachFormListener();
         });
 
-        function addWork(user, title, priority, note, flag, helper, estHours) {
+        function addWork(user, title, priority, note, flag, helper) {
             if (!appData.works[user]) appData.works[user] = [];
 
             const work = {
@@ -1277,7 +1269,6 @@
             };
             if (flag) work.flag = flag;
             if (flag === '隊友協助' && helper) work.helper = helper;
-            if (estHours > 0) work.estHours = estHours;
 
             appData.works[user].push(work);
 
