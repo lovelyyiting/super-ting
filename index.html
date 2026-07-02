@@ -518,6 +518,18 @@
                 </div>
             </div>
 
+            <div class="announcement-section" style="background: #eef5ff; border-color: #7fb3ff;">
+                <h3>🚚 近期出貨需求</h3>
+                <div id="staffShipmentList"></div>
+                <div style="margin-top: 15px; border-top: 1px solid #7fb3ff; padding-top: 15px;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <input type="date" id="staffShipDate" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <input type="text" id="staffShipText" placeholder="客戶 / 品名 / 數量..." style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <button onclick="postShipment('staff')" class="submit-btn" style="margin-top: 0;">新增</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="add-work-form">
                 <h3>➕ 新增工作</h3>
                 <form id="addWorkForm">
@@ -566,6 +578,18 @@
                             <option value="緊急">緊急</option>
                         </select>
                         <button onclick="postAnnouncement('christine')" class="submit-btn" style="margin-top: 0; flex: 1;">發布</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="announcement-section" style="background: #eef5ff; border-color: #7fb3ff;">
+                <h3>🚚 近期出貨需求</h3>
+                <div id="shipmentList"></div>
+                <div style="margin-top: 15px; border-top: 1px solid #7fb3ff; padding-top: 15px;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <input type="date" id="managerShipDate" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <input type="text" id="managerShipText" placeholder="客戶 / 品名 / 數量..." style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <button onclick="postShipment('manager')" class="submit-btn" style="margin-top: 0;">新增</button>
                     </div>
                 </div>
             </div>
@@ -628,6 +652,18 @@
                 </div>
             </div>
 
+            <div class="announcement-section" style="background: #eef5ff; border-color: #7fb3ff;">
+                <h3>🚚 近期出貨需求</h3>
+                <div id="viewerShipmentList"></div>
+                <div style="margin-top: 15px; border-top: 1px solid #7fb3ff; padding-top: 15px;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <input type="date" id="viewerShipDate" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <input type="text" id="viewerShipText" placeholder="客戶 / 品名 / 數量..." style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <button onclick="postShipment('viewer')" class="submit-btn" style="margin-top: 0;">新增</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="dashboard-grid" id="viewerDashboardGrid"></div>
         </div>
     </div>
@@ -672,6 +708,7 @@
         let appData = {
             works: {},
             announcements: [],
+            shipments: [],
             customStaffNames: {}
         };
 
@@ -709,6 +746,7 @@
             // 先載入本機快取，離線時也看得到資料
             appData.works = JSON.parse(localStorage.getItem('works') || '{}');
             appData.announcements = JSON.parse(localStorage.getItem('announcements') || '[]');
+            appData.shipments = JSON.parse(localStorage.getItem('shipments') || '[]');
             appData.customStaffNames = JSON.parse(localStorage.getItem('customStaffNames') || '{}');
             loadStaffNames();
 
@@ -775,6 +813,12 @@
                 localStorage.setItem('announcements', JSON.stringify(appData.announcements));
                 rerenderCurrentView();
             });
+            db.ref('shipments').on('value', snap => {
+                const v = snap.val();
+                appData.shipments = v ? (Array.isArray(v) ? v.filter(Boolean) : Object.values(v)) : [];
+                localStorage.setItem('shipments', JSON.stringify(appData.shipments));
+                rerenderCurrentView();
+            });
             db.ref('customStaffNames').on('value', snap => {
                 appData.customStaffNames = snap.val() || {};
                 localStorage.setItem('customStaffNames', JSON.stringify(appData.customStaffNames));
@@ -795,14 +839,22 @@
             if (db) db.ref('announcements').set(appData.announcements).catch(e => console.log('雲端儲存失敗', e));
         }
 
+        // 儲存出貨需求資料（本機 + 雲端）
+        function saveShipments() {
+            localStorage.setItem('shipments', JSON.stringify(appData.shipments));
+            if (db) db.ref('shipments').set(appData.shipments).catch(e => console.log('雲端儲存失敗', e));
+        }
+
         // 依目前開啟的畫面重新渲染（雲端資料變動時呼叫）
         function rerenderCurrentView() {
             if (document.getElementById('managerView').classList.contains('active')) {
                 renderDashboard('manager');
                 loadAnnouncements('manager');
+                loadShipments('manager');
             } else if (document.getElementById('viewerView').classList.contains('active')) {
                 renderDashboard('viewer');
                 loadAnnouncements('viewer');
+                loadShipments('viewer');
             } else if (document.getElementById('staffView').classList.contains('active') && currentUser) {
                 renderStaffView(currentUser);
             }
@@ -892,10 +944,12 @@
                 loadStaffNames();
                 renderDashboard();
                 loadAnnouncements('manager');
+                loadShipments('manager');
             } else if (user === 'penny') {
                 document.getElementById('viewerView').classList.add('active');
                 renderDashboard('viewer');
                 loadAnnouncements('viewer');
+                loadShipments('viewer');
             } else {
                 document.getElementById('staffView').classList.add('active');
                 renderStaffView(user);
@@ -918,6 +972,7 @@
             const html = renderWorksByStatus(works, user, true);
             document.getElementById('staffWorkList').innerHTML = html;
             loadAnnouncements('staff');
+            loadShipments('staff');
         }
 
         // 渲染工作列表 (按狀態分組)
@@ -1331,6 +1386,112 @@
             const elementId = elementMap[view];
             if (elementId) {
                 document.getElementById(elementId).innerHTML = html || '<p style="color: #999;">暫無公告</p>';
+            }
+        }
+
+        // ===== 近期出貨需求 =====
+
+        // 依出貨日期計算急迫度標籤
+        function shipmentBadge(dateStr) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const d = new Date(dateStr + 'T00:00:00');
+            const diff = Math.round((d - today) / 86400000);
+
+            if (isNaN(diff)) return { text: '', color: '#6c757d' };
+            if (diff < 0) return { text: `已逾期 ${-diff} 天`, color: '#dc3545' };
+            if (diff === 0) return { text: '今天出貨', color: '#dc3545' };
+            if (diff <= 3) return { text: `${diff} 天後`, color: '#fd7e14' };
+            return { text: `${diff} 天後`, color: '#28a745' };
+        }
+
+        // 新增出貨需求
+        function postShipment(view) {
+            const idMap = {
+                staff: ['staffShipDate', 'staffShipText'],
+                manager: ['managerShipDate', 'managerShipText'],
+                viewer: ['viewerShipDate', 'viewerShipText']
+            };
+            const [dateId, textId] = idMap[view];
+            const date = document.getElementById(dateId).value;
+            const text = document.getElementById(textId).value;
+
+            if (!date) {
+                alert('請選擇出貨日期');
+                return;
+            }
+            if (!text.trim()) {
+                alert('請填入出貨內容（客戶 / 品名 / 數量）');
+                return;
+            }
+
+            const authorName = view === 'manager' ? 'Christine' : view === 'viewer' ? 'Penny' : staffNames[currentUser];
+
+            appData.shipments.push({
+                id: Date.now().toString(),
+                date: date,
+                text: text.trim(),
+                author: authorName,
+                time: new Date().toLocaleString('zh-TW')
+            });
+
+            saveShipments();
+            document.getElementById(dateId).value = '';
+            document.getElementById(textId).value = '';
+            loadShipments(view);
+        }
+
+        // 刪除出貨需求（僅主管）
+        function deleteShipment(shipId) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以刪除出貨需求');
+                return;
+            }
+
+            if (confirm('確定要刪除這筆出貨需求嗎？')) {
+                appData.shipments = appData.shipments.filter(s => s.id !== shipId);
+                saveShipments();
+
+                const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                                  document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+                loadShipments(currentView);
+            }
+        }
+
+        // 顯示出貨需求（依出貨日期由近到遠排序）
+        function loadShipments(view) {
+            const shipments = appData.shipments.slice();
+            shipments.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+
+            let html = '';
+
+            shipments.forEach(ship => {
+                const badge = shipmentBadge(ship.date);
+                const dateDisplay = ship.date ? ship.date.replace(/^\d{4}-/, '').replace('-', '/') : '';
+                const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" style="margin-left: auto;" onclick="deleteShipment('${ship.id}')">刪除</button>` : '';
+
+                html += `<div class="announcement-item">
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="background: ${badge.color}; color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📅 ${dateDisplay} ${badge.text}</span>
+                            <strong>${ship.text}</strong>
+                        </div>
+                        <div class="announcement-author">📝 ${ship.author}</div>
+                        <div class="announcement-time">${ship.time}</div>
+                    </div>
+                    ${deleteBtn}
+                </div>`;
+            });
+
+            const elementMap = {
+                'staff': 'staffShipmentList',
+                'manager': 'shipmentList',
+                'viewer': 'viewerShipmentList'
+            };
+
+            const elementId = elementMap[view];
+            if (elementId) {
+                document.getElementById(elementId).innerHTML = html || '<p style="color: #999;">暫無出貨需求</p>';
             }
         }
     </script>
