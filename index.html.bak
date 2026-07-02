@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生管即時看板</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        /* 身份選擇視圖 */
+        .identity-view {
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        .identity-view h2 {
+            margin-bottom: 30px;
+            color: #333;
+        }
+
+        .identity-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .identity-btn {
+            padding: 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .identity-btn.staff {
+            background: #667eea;
+            color: white;
+        }
+
+        .identity-btn.staff:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .identity-btn.manager {
+            background: #f093fb;
+            color: white;
+        }
+
+        .identity-btn.manager:hover {
+            background: #e080e8;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(240, 147, 251, 0.4);
+        }
+
+        .identity-btn.viewer {
+            background: #4facfe;
+            color: white;
+        }
+
+        .identity-btn.viewer:hover {
+            background: #3d9aed;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
+        }
+
+        /* 主視圖 */
+        .main-view {
+            display: none;
+            padding: 20px;
+        }
+
+        .main-view.active {
+            display: block;
+        }
+
+        .view-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .view-header h2 {
+            color: #333;
+        }
+
+        .logout-btn {
+            padding: 8px 15px;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .logout-btn:hover {
+            background: #ff5252;
+        }
+
+        /* 工作列表 */
+        .work-section {
+            margin-bottom: 30px;
+        }
+
+        .work-section h3 {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .work-item {
+            background: #f9f9f9;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .work-content {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .work-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .work-note {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .work-status {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-doing {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-waiting {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-done {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .work-actions {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .work-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .edit-btn {
+            background: #667eea;
+            color: white;
+        }
+
+        .delete-btn {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .assign-btn {
+            background: #f093fb;
+            color: white;
+        }
+
+        /* 新增工作表單 */
+        .add-work-form {
+            background: #f0f0f0;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .submit-btn {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .submit-btn:hover {
+            background: #5568d3;
+        }
+
+        .cancel-btn {
+            padding: 10px 20px;
+            background: #ccc;
+            color: #333;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* 公布欄 */
+        .announcement-section {
+            background: #fffacd;
+            border: 2px solid #ffd700;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .announcement-section h3 {
+            color: #b8860b;
+            margin-bottom: 15px;
+        }
+
+        .announcement-item {
+            background: white;
+            border-left: 4px solid #ffd700;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .announcement-author {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .announcement-time {
+            font-size: 11px;
+            color: #ccc;
+        }
+
+        /* 戰情室 */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .staff-card {
+            background: #f9f9f9;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .staff-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .stats {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            background: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            border-left: 3px solid #667eea;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: #999;
+        }
+
+        .stat-value {
+            font-weight: bold;
+            color: #333;
+        }
+
+        /* 密碼輸入 */
+        .password-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .password-modal.active {
+            display: flex;
+        }
+
+        .password-box {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        .password-box h3 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .password-box input {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            width: 200px;
+        }
+
+        .password-box button {
+            padding: 10px 20px;
+            margin: 0 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .password-submit {
+            background: #667eea;
+            color: white;
+        }
+
+        .password-cancel {
+            background: #ccc;
+            color: #333;
+        }
+
+        /* 響應式設計 */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .identity-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .work-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .view-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 生管即時看板</h1>
+            <p>實時掌握工作進度，協作無縫接軌</p>
+        </div>
+
+        <!-- 身份選擇 -->
+        <div id="identityView" class="identity-view active">
+            <h2>請選擇身份登入</h2>
+            <div class="identity-buttons">
+                <button class="identity-btn staff" onclick="selectIdentity('stella')">👩‍💼 Stella</button>
+                <button class="identity-btn staff" onclick="selectIdentity('xiaole')">👩‍💼 小樂</button>
+                <button class="identity-btn staff" onclick="selectIdentity('lingjia')">👩‍💼 伶佳</button>
+                <button class="identity-btn manager" onclick="selectIdentity('christine')">👔 Christine</button>
+                <button class="identity-btn viewer" onclick="selectIdentity('penny')">👑 Penny</button>
+            </div>
+        </div>
+
+        <!-- 生管視圖 -->
+        <div id="staffView" class="main-view">
+            <div class="view-header">
+                <h2>📋 我的工作清單</h2>
+                <button class="logout-btn" onclick="logout()">登出</button>
+            </div>
+
+            <div class="announcement-section">
+                <h3>📢 公布欄</h3>
+                <div id="staffAnnouncementList"></div>
+                <div style="margin-top: 15px; border-top: 1px solid #ffd700; padding-top: 15px;">
+                    <textarea id="staffAnnouncement" placeholder="分享訊息..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;"></textarea>
+                    <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                        <select id="staffAnnouncementImportance" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                            <option value="普通">普通</option>
+                            <option value="重要">重要</option>
+                            <option value="緊急">緊急</option>
+                        </select>
+                        <button onclick="postAnnounceAsStaff()" class="submit-btn" style="margin-top: 0; flex: 1;">發布</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="add-work-form">
+                <h3>➕ 新增工作</h3>
+                <form id="addWorkForm">
+                    <div class="form-group">
+                        <label>工作名稱 *</label>
+                        <input type="text" id="workTitle" placeholder="例如：差單 #20250705" required>
+                    </div>
+                    <div class="form-group">
+                        <label>優先度</label>
+                        <select id="workPriority">
+                            <option value="高">高</option>
+                            <option value="中" selected>中</option>
+                            <option value="低">低</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>備註</label>
+                        <textarea id="workNote" placeholder="詳細說明、需要注意的事項等"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">新增</button>
+                        <button type="reset" class="cancel-btn">清空</button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="staffWorkList"></div>
+        </div>
+
+        <!-- 主管視圖 -->
+        <div id="managerView" class="main-view">
+            <div class="view-header">
+                <h2>🎯 即時戰情室</h2>
+                <button class="logout-btn" onclick="logout()">登出</button>
+            </div>
+
+            <div class="announcement-section">
+                <h3>📢 公布欄</h3>
+                <div id="announcementList"></div>
+                <div style="margin-top: 15px; border-top: 1px solid #ffd700; padding-top: 15px;">
+                    <textarea id="managerAnnouncement" placeholder="發布訊息..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;"></textarea>
+                    <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                        <select id="managerAnnouncementImportance" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                            <option value="普通">普通</option>
+                            <option value="重要">重要</option>
+                            <option value="緊急">緊急</option>
+                        </select>
+                        <button onclick="postAnnouncement('christine')" class="submit-btn" style="margin-top: 0; flex: 1;">發布</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid" id="dashboardGrid"></div>
+
+            <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
+                <h3>⚙️ 人員管理</h3>
+                <p style="color: #666; margin-bottom: 15px;">修改生管名字</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">生管 1</label>
+                        <input type="text" id="staffName1" placeholder="Stella" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">生管 2</label>
+                        <input type="text" id="staffName2" placeholder="小樂" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">生管 3</label>
+                        <input type="text" id="staffName3" placeholder="伶佳" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                </div>
+                <button onclick="saveStaffNames()" class="submit-btn" style="margin-bottom: 20px;">💾 保存名字</button>
+            </div>
+
+            <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
+                <h3>📊 工作數據導出</h3>
+                <p style="color: #666; margin-bottom: 15px;">導出所有工作詳情，包含接案時間、完成時間、耗時等</p>
+                <button onclick="exportToExcel()" class="submit-btn">📥 導出 Excel</button>
+            </div>
+        </div>
+
+        <!-- 查看視圖 (Penny) -->
+        <div id="viewerView" class="main-view">
+            <div class="view-header">
+                <h2>👑 全員工作總覽</h2>
+                <button class="logout-btn" onclick="logout()">登出</button>
+            </div>
+
+            <div class="announcement-section">
+                <h3>📢 公布欄</h3>
+                <div id="viewerAnnouncementList"></div>
+                <div style="margin-top: 15px; border-top: 1px solid #ffd700; padding-top: 15px;">
+                    <textarea id="viewerAnnouncement" placeholder="分享訊息..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;"></textarea>
+                    <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                        <select id="viewerAnnouncementImportance" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                            <option value="普通">普通</option>
+                            <option value="重要">重要</option>
+                            <option value="緊急">緊急</option>
+                        </select>
+                        <button onclick="postAnnouncement('penny')" class="submit-btn" style="margin-top: 0; flex: 1;">發布</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid" id="viewerDashboardGrid"></div>
+        </div>
+    </div>
+
+    <!-- 密碼輸入 -->
+    <div id="passwordModal" class="password-modal">
+        <div class="password-box">
+            <h3>主管模式需要密碼</h3>
+            <input type="password" id="passwordInput" placeholder="請輸入密碼" onkeypress="if(event.key==='Enter') checkPassword()">
+            <div>
+                <button class="password-submit" onclick="checkPassword()">確認</button>
+                <button class="password-cancel" onclick="cancelPassword()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 資料結構
+        let currentUser = null;
+        const MANAGER_PASSWORD = '12345';
+        const staffNames = {
+            stella: 'Stella',
+            xiaole: '小樂',
+            lingjia: '伶佳'
+        };
+
+        // 初始化資料
+        function initData() {
+            if (!localStorage.getItem('works')) {
+                localStorage.setItem('works', JSON.stringify({}));
+            }
+            if (!localStorage.getItem('announcements')) {
+                localStorage.setItem('announcements', JSON.stringify([]));
+            }
+            loadStaffNames();
+        }
+
+        // 讀取自定義人員名字
+        function loadStaffNames() {
+            const customNames = JSON.parse(localStorage.getItem('customStaffNames') || '{}');
+            const defaultNames = ['stella', 'xiaole', 'lingjia'];
+
+            defaultNames.forEach((key, index) => {
+                staffNames[key] = customNames[key] || Object.values(staffNames)[index] || ['Stella', '小樂', '伶佳'][index];
+            });
+
+            // 如果在主管視圖，更新輸入框
+            if (currentUser === 'christine') {
+                document.getElementById('staffName1').value = staffNames['stella'];
+                document.getElementById('staffName2').value = staffNames['xiaole'];
+                document.getElementById('staffName3').value = staffNames['lingjia'];
+            }
+        }
+
+        // 保存自定義人員名字
+        function saveStaffNames() {
+            const name1 = document.getElementById('staffName1').value.trim();
+            const name2 = document.getElementById('staffName2').value.trim();
+            const name3 = document.getElementById('staffName3').value.trim();
+
+            if (!name1 || !name2 || !name3) {
+                alert('請填入所有生管名字');
+                return;
+            }
+
+            const customNames = {
+                'stella': name1,
+                'xiaole': name2,
+                'lingjia': name3
+            };
+
+            localStorage.setItem('customStaffNames', JSON.stringify(customNames));
+            staffNames['stella'] = name1;
+            staffNames['xiaole'] = name2;
+            staffNames['lingjia'] = name3;
+
+            alert('✅ 人員名字已保存！');
+            renderDashboard();
+        }
+
+        // 選擇身份
+        function selectIdentity(identity) {
+            if (identity === 'christine') {
+                document.getElementById('passwordModal').classList.add('active');
+                document.getElementById('passwordInput').value = '';
+                document.getElementById('passwordInput').focus();
+            } else {
+                currentUser = identity;
+                enterView(identity);
+            }
+        }
+
+        // 檢查密碼
+        function checkPassword() {
+            const password = document.getElementById('passwordInput').value;
+            if (password === MANAGER_PASSWORD) {
+                currentUser = 'christine';
+                document.getElementById('passwordModal').classList.remove('active');
+                enterView('christine');
+            } else {
+                alert('密碼錯誤');
+                document.getElementById('passwordInput').value = '';
+            }
+        }
+
+        function cancelPassword() {
+            document.getElementById('passwordModal').classList.remove('active');
+        }
+
+        // 進入視圖
+        function enterView(user) {
+            document.getElementById('identityView').classList.remove('active');
+            document.getElementById('staffView').classList.remove('active');
+            document.getElementById('managerView').classList.remove('active');
+            document.getElementById('viewerView').classList.remove('active');
+
+            if (user === 'christine') {
+                document.getElementById('managerView').classList.add('active');
+                loadStaffNames();
+                renderDashboard();
+                loadAnnouncements('manager');
+            } else if (user === 'penny') {
+                document.getElementById('viewerView').classList.add('active');
+                renderDashboard('viewer');
+                loadAnnouncements('viewer');
+            } else {
+                document.getElementById('staffView').classList.add('active');
+                renderStaffView(user);
+            }
+        }
+
+        // 登出
+        function logout() {
+            currentUser = null;
+            document.getElementById('identityView').classList.add('active');
+            document.getElementById('staffView').classList.remove('active');
+            document.getElementById('managerView').classList.remove('active');
+            document.getElementById('viewerView').classList.remove('active');
+        }
+
+        // 渲染生管視圖
+        function renderStaffView(user) {
+            document.querySelector('#staffView .view-header h2').textContent = `📋 ${staffNames[user]} 的工作清單`;
+            const works = getWorks(user);
+            const html = renderWorksByStatus(works, user, true);
+            document.getElementById('staffWorkList').innerHTML = html;
+            loadAnnouncements('staff');
+        }
+
+        // 渲染工作列表 (按狀態分組)
+        function renderWorksByStatus(works, owner, canEdit = false) {
+            const statuses = ['進行中', '等待中', '完成'];
+            let html = '';
+
+            statuses.forEach(status => {
+                const statusWorks = works.filter(w => w.status === status);
+                if (statusWorks.length === 0) return;
+
+                html += `<div class="work-section">
+                    <h3>${status} (${statusWorks.length})</h3>`;
+
+                statusWorks.forEach(work => {
+                    html += renderWorkItem(work, owner, canEdit);
+                });
+
+                html += '</div>';
+            });
+
+            return html;
+        }
+
+        // 單項工作顯示
+        function renderWorkItem(work, owner, canEdit = false) {
+            const statusClass = `status-${work.status === '進行中' ? 'doing' : work.status === '等待中' ? 'waiting' : 'done'}`;
+            const statusMap = { '進行中': 'doing', '等待中': 'waiting', '完成': 'done' };
+
+            // 計算耗時
+            let durationText = '';
+            if (work.createdAt) {
+                const createdDate = new Date(work.createdAt);
+                const completedDate = work.completedAt ? new Date(work.completedAt) : new Date();
+                const durationMs = completedDate - createdDate;
+                const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
+                const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+
+                if (durationDays > 0) {
+                    durationText = `⏱️ ${durationDays}天${durationHours % 24}小時`;
+                } else if (durationHours > 0) {
+                    durationText = `⏱️ ${durationHours}小時`;
+                }
+            }
+
+            let html = `<div class="work-item">
+                <div class="work-content">
+                    <div class="work-title">${work.title}</div>`;
+
+            if (work.note) html += `<div class="work-note">📝 ${work.note}</div>`;
+
+            // 顯示時間信息
+            let timeInfo = '';
+            if (work.createdAt) {
+                const createdTime = new Date(work.createdAt).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                timeInfo += `📅 接案: ${createdTime}`;
+            }
+            if (work.completedAt) {
+                const completedTime = new Date(work.completedAt).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                timeInfo += ` | 完成: ${completedTime}`;
+            }
+            if (durationText) {
+                timeInfo += ` | ${durationText}`;
+            }
+
+            if (timeInfo) html += `<div class="work-note" style="color: #999; font-size: 11px;">${timeInfo}</div>`;
+
+            html += `<span class="work-status ${statusClass}">${work.status}</span>`;
+            if (work.priority) html += ` <span style="font-size: 12px; color: #666;">優先度: ${work.priority}</span>`;
+
+            html += `</div><div class="work-actions">`;
+
+            if (canEdit && owner === currentUser) {
+                // 狀態轉換
+                html += `<select class="work-btn" style="background: #667eea; color: white; padding: 6px; border: none; border-radius: 4px;" onchange="updateWorkStatus('${work.id}', this.value)">
+                    <option value="">改狀態</option>
+                    <option value="進行中">進行中</option>
+                    <option value="等待中">等待中</option>
+                    <option value="完成">完成</option>
+                </select>`;
+                html += `<button class="work-btn edit-btn" onclick="editWork('${work.id}')">編輯</button>`;
+                html += `<button class="work-btn delete-btn" onclick="deleteWork('${work.id}')">刪除</button>`;
+            }
+
+            html += `</div></div>`;
+            return html;
+        }
+
+        // 取得工作列表
+        function getWorks(user = null) {
+            const allWorks = JSON.parse(localStorage.getItem('works') || '{}');
+            if (!user) return allWorks;
+            return allWorks[user] || [];
+        }
+
+        // 新增工作
+        function attachFormListener() {
+            const form = document.getElementById('addWorkForm');
+            if (form) {
+                form.onsubmit = function(e) {
+                    e.preventDefault();
+                    const title = document.getElementById('workTitle').value;
+                    const priority = document.getElementById('workPriority').value;
+                    const note = document.getElementById('workNote').value;
+
+                    if (!title.trim()) {
+                        alert('請填入工作名稱');
+                        return;
+                    }
+
+                    addWork(currentUser, title, priority, note);
+                    form.reset();
+                    renderStaffView(currentUser);
+                };
+            }
+        }
+
+        // 導出 Excel
+        function exportToExcel() {
+            const works = JSON.parse(localStorage.getItem('works') || '{}');
+            let data = [];
+
+            Object.keys(staffNames).forEach(user => {
+                const userWorks = works[user] || [];
+                userWorks.forEach(work => {
+                    const createdDate = work.createdAt ? new Date(work.createdAt) : null;
+                    const completedDate = work.completedAt ? new Date(work.completedAt) : null;
+
+                    let duration = '';
+                    if (createdDate && completedDate && work.status === '完成') {
+                        const durationMs = completedDate - createdDate;
+                        const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+                        const durationHours = Math.floor((durationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        duration = durationDays > 0 ? `${durationDays}天${durationHours}小時` : `${durationHours}小時`;
+                    }
+
+                    data.push({
+                        '生管': staffNames[user],
+                        '工作名稱': work.title,
+                        '優先度': work.priority || '中',
+                        '狀態': work.status,
+                        '接案時間': work.createdAt || '',
+                        '完成時間': work.completedAt || '',
+                        '耗時': duration,
+                        '備註': work.note || ''
+                    });
+                });
+            });
+
+            if (data.length === 0) {
+                alert('目前沒有工作數據');
+                return;
+            }
+
+            // 使用 SheetJS 生成 Excel
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, '工作清單');
+
+            // 設定列寬
+            worksheet['!cols'] = [
+                { wch: 12 },  // 生管
+                { wch: 20 },  // 工作名稱
+                { wch: 8 },   // 優先度
+                { wch: 8 },   // 狀態
+                { wch: 18 },  // 接案時間
+                { wch: 18 },  // 完成時間
+                { wch: 12 },  // 耗時
+                { wch: 30 }   // 備註
+            ];
+
+            // 下載文件
+            const fileName = `生管工作清單_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.xlsx`;
+            XLSX.writeFile(workbook, fileName);
+        }
+
+        window.addEventListener('load', function() {
+            initData();
+            attachFormListener();
+        });
+
+        function addWork(user, title, priority, note) {
+            const works = JSON.parse(localStorage.getItem('works') || '{}');
+            if (!works[user]) works[user] = [];
+
+            works[user].push({
+                id: Date.now().toString(),
+                title: title,
+                priority: priority,
+                note: note,
+                status: '進行中',
+                createdAt: new Date().toLocaleString('zh-TW')
+            });
+
+            localStorage.setItem('works', JSON.stringify(works));
+        }
+
+        // 更新工作狀態
+        function updateWorkStatus(workId, newStatus) {
+            const works = JSON.parse(localStorage.getItem('works') || '{}');
+            Object.keys(works).forEach(user => {
+                const work = works[user].find(w => w.id === workId);
+                if (work) {
+                    work.status = newStatus;
+                    // 記錄完成時間
+                    if (newStatus === '完成') {
+                        work.completedAt = new Date().toLocaleString('zh-TW');
+                    } else {
+                        // 如果改回進行中或等待中，清除完成時間
+                        delete work.completedAt;
+                    }
+                }
+            });
+            localStorage.setItem('works', JSON.stringify(works));
+            renderStaffView(currentUser);
+        }
+
+        // 刪除工作
+        function deleteWork(workId) {
+            if (confirm('確定要刪除這項工作嗎？')) {
+                const works = JSON.parse(localStorage.getItem('works') || '{}');
+                works[currentUser] = works[currentUser].filter(w => w.id !== workId);
+                localStorage.setItem('works', JSON.stringify(works));
+                renderStaffView(currentUser);
+            }
+        }
+
+        // 編輯工作 (簡化版)
+        function editWork(workId) {
+            const works = JSON.parse(localStorage.getItem('works') || '{}');
+            const work = works[currentUser].find(w => w.id === workId);
+            if (work) {
+                const newTitle = prompt('工作名稱:', work.title);
+                if (newTitle) {
+                    work.title = newTitle;
+                    work.note = prompt('備註:', work.note);
+                    localStorage.setItem('works', JSON.stringify(works));
+                    renderStaffView(currentUser);
+                }
+            }
+        }
+
+        // 戰情室
+        function renderDashboard(view = 'manager') {
+            const works = JSON.parse(localStorage.getItem('works') || '{}');
+            let html = '';
+
+            Object.keys(staffNames).forEach(user => {
+                const userWorks = works[user] || [];
+                const doing = userWorks.filter(w => w.status === '進行中').length;
+                const waiting = userWorks.filter(w => w.status === '等待中').length;
+                const done = userWorks.filter(w => w.status === '完成').length;
+
+                html += `<div class="staff-card">
+                    <div class="staff-name">${staffNames[user]}</div>
+                    <div class="stats">
+                        <div class="stat"><div class="stat-label">進行中</div><div class="stat-value">${doing}</div></div>
+                        <div class="stat"><div class="stat-label">等待中</div><div class="stat-value">${waiting}</div></div>
+                        <div class="stat"><div class="stat-label">完成</div><div class="stat-value">${done}</div></div>
+                    </div>
+                    <div>${renderWorksByStatus(userWorks, user, false)}</div>
+                </div>`;
+            });
+
+            const gridId = view === 'manager' ? 'dashboardGrid' : 'viewerDashboardGrid';
+            document.getElementById(gridId).innerHTML = html;
+        }
+
+        // 公布欄
+        function postAnnouncement(author) {
+            let textareaId, importanceId, viewType;
+
+            if (author === 'christine') {
+                textareaId = 'managerAnnouncement';
+                importanceId = 'managerAnnouncementImportance';
+                viewType = 'manager';
+            } else {
+                textareaId = 'viewerAnnouncement';
+                importanceId = 'viewerAnnouncementImportance';
+                viewType = 'viewer';
+            }
+
+            const text = document.getElementById(textareaId).value;
+            const importance = document.getElementById(importanceId).value;
+
+            if (!text.trim()) {
+                alert('請輸入訊息');
+                return;
+            }
+
+            const announcements = JSON.parse(localStorage.getItem('announcements') || '[]');
+            const authorName = author === 'christine' ? 'Christine' : 'Penny';
+            const importanceOrder = { '緊急': 0, '重要': 1, '普通': 2 };
+
+            announcements.push({
+                id: Date.now().toString(),
+                author: authorName,
+                text: text,
+                time: new Date().toLocaleString('zh-TW'),
+                importance: importance,
+                importanceOrder: importanceOrder[importance]
+            });
+
+            localStorage.setItem('announcements', JSON.stringify(announcements));
+            document.getElementById(textareaId).value = '';
+            document.getElementById(importanceId).value = '普通';
+            loadAnnouncements(viewType);
+        }
+
+        function postAnnounceAsStaff() {
+            const text = document.getElementById('staffAnnouncement').value;
+            const importance = document.getElementById('staffAnnouncementImportance').value;
+
+            if (!text.trim()) {
+                alert('請輸入訊息');
+                return;
+            }
+
+            const announcements = JSON.parse(localStorage.getItem('announcements') || '[]');
+            const authorName = staffNames[currentUser];
+            const importanceOrder = { '緊急': 0, '重要': 1, '普通': 2 };
+
+            announcements.push({
+                id: Date.now().toString(),
+                author: authorName,
+                text: text,
+                time: new Date().toLocaleString('zh-TW'),
+                importance: importance,
+                importanceOrder: importanceOrder[importance]
+            });
+
+            localStorage.setItem('announcements', JSON.stringify(announcements));
+            document.getElementById('staffAnnouncement').value = '';
+            document.getElementById('staffAnnouncementImportance').value = '普通';
+            loadAnnouncements('staff');
+        }
+
+        function deleteAnnouncement(annId) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以刪除公告');
+                return;
+            }
+
+            if (confirm('確定要刪除這則公告嗎？')) {
+                const announcements = JSON.parse(localStorage.getItem('announcements') || '[]');
+                const filtered = announcements.filter(a => a.id !== annId);
+                localStorage.setItem('announcements', JSON.stringify(filtered));
+
+                const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                                  document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+                loadAnnouncements(currentView);
+            }
+        }
+
+        function loadAnnouncements(view) {
+            let announcements = JSON.parse(localStorage.getItem('announcements') || '[]');
+
+            // 按重要性排序（緊急 > 重要 > 普通）
+            announcements.sort((a, b) => (a.importanceOrder || 2) - (b.importanceOrder || 2));
+
+            let html = '';
+
+            announcements.forEach(ann => {
+                const importanceEmoji = ann.importance === '緊急' ? '🚨' : ann.importance === '重要' ? '⚠️' : '📌';
+                const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" style="margin-left: auto;" onclick="deleteAnnouncement('${ann.id}')">刪除</button>` : '';
+
+                html += `<div class="announcement-item">
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span>${importanceEmoji} ${ann.importance}</span>
+                            <strong>${ann.text}</strong>
+                        </div>
+                        <div class="announcement-author">📝 ${ann.author}</div>
+                        <div class="announcement-time">${ann.time}</div>
+                    </div>
+                    ${deleteBtn}
+                </div>`;
+            });
+
+            const elementMap = {
+                'staff': 'staffAnnouncementList',
+                'manager': 'announcementList',
+                'viewer': 'viewerAnnouncementList'
+            };
+
+            const elementId = elementMap[view];
+            if (elementId) {
+                document.getElementById(elementId).innerHTML = html || '<p style="color: #999;">暫無公告</p>';
+            }
+        }
+    </script>
+</body>
+</html>
