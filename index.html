@@ -597,6 +597,12 @@
                 <p style="color: #666; margin-bottom: 15px;">導出所有工作詳情，包含接案時間、完成時間、耗時等</p>
                 <button onclick="exportToExcel()" class="submit-btn">📥 導出 Excel</button>
             </div>
+
+            <div style="background: #fff3f3; padding: 20px; border-radius: 8px; margin-top: 30px; border: 1px solid #f5c6cb;">
+                <h3>🧹 清除已完成工作</h3>
+                <p style="color: #666; margin-bottom: 15px;">會先自動下載 Excel 備份，再把所有生管的「完成」項目從看板移除（所有裝置同步生效）</p>
+                <button onclick="clearCompletedWorks()" class="submit-btn" style="background: #dc3545;">🧹 備份並清除已完成</button>
+            </div>
         </div>
 
         <!-- 查看視圖 (Penny) -->
@@ -1086,6 +1092,38 @@
             // 下載文件
             const fileName = `生管工作清單_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.xlsx`;
             XLSX.writeFile(workbook, fileName);
+        }
+
+        // 主管專用：備份並清除所有已完成工作
+        function clearCompletedWorks() {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以清除已完成工作');
+                return;
+            }
+
+            let count = 0;
+            Object.keys(appData.works).forEach(user => {
+                count += (appData.works[user] || []).filter(w => w.status === '完成').length;
+            });
+
+            if (count === 0) {
+                alert('目前沒有已完成的工作');
+                return;
+            }
+
+            if (!confirm(`共有 ${count} 項已完成的工作。\n\n將先自動下載 Excel 備份，然後從看板清除這些項目（所有裝置都會同步移除）。\n\n確定要繼續嗎？`)) {
+                return;
+            }
+
+            exportToExcel();
+
+            Object.keys(appData.works).forEach(user => {
+                appData.works[user] = (appData.works[user] || []).filter(w => w.status !== '完成');
+            });
+            saveWorks();
+            renderDashboard('manager');
+
+            alert(`✅ 已清除 ${count} 項已完成工作，備份已下載到你的電腦`);
         }
 
         window.addEventListener('load', function() {
