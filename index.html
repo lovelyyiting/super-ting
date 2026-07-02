@@ -546,6 +546,18 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label>特別標記</label>
+                        <select id="workFlag" onchange="document.getElementById('workHelperGroup').style.display = this.value === '隊友協助' ? 'block' : 'none'">
+                            <option value="" selected>無</option>
+                            <option value="主管注意">🚨 需主管注意</option>
+                            <option value="隊友協助">🤝 需隊友協助</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="workHelperGroup" style="display: none;">
+                        <label>請誰協助</label>
+                        <select id="workHelper"></select>
+                    </div>
+                    <div class="form-group">
                         <label>備註</label>
                         <textarea id="workNote" placeholder="詳細說明、需要注意的事項等"></textarea>
                     </div>
@@ -968,6 +980,16 @@
         // 渲染生管視圖
         function renderStaffView(user) {
             document.querySelector('#staffView .view-header h2').textContent = `📋 ${staffNames[user]} 的工作清單`;
+
+            // 「請誰協助」選單帶入其他生管的名字
+            const helperSel = document.getElementById('workHelper');
+            if (helperSel) {
+                helperSel.innerHTML = Object.keys(staffNames)
+                    .filter(k => k !== user)
+                    .map(k => `<option value="${k}">${staffNames[k]}</option>`)
+                    .join('');
+            }
+
             const works = getWorks(user);
             const html = renderWorksByStatus(works, user, true);
             document.getElementById('staffWorkList').innerHTML = html;
@@ -1045,6 +1067,9 @@
             html += `<span class="work-status ${statusClass}">${work.status}</span>`;
             if (work.priority) html += ` <span style="font-size: 12px; color: #666;">優先度: ${work.priority}</span>`;
 
+            if (work.flag === '主管注意') html += ` <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">🚨 需主管注意</span>`;
+            if (work.flag === '隊友協助') html += ` <span style="background: #17a2b8; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">🤝 需 ${staffNames[work.helper] || '隊友'} 協助</span>`;
+
             html += `</div><div class="work-actions">`;
 
             if (canEdit && owner === currentUser) {
@@ -1112,16 +1137,22 @@
                     const title = document.getElementById('workTitle').value;
                     const priority = document.getElementById('workPriority').value;
                     const note = document.getElementById('workNote').value;
+                    const flag = document.getElementById('workFlag').value;
+                    const helper = flag === '隊友協助' ? document.getElementById('workHelper').value : '';
 
                     if (!title.trim()) {
                         alert('請填入工作名稱');
                         return;
                     }
 
-                    addWork(currentUser, title, priority, note);
+                    addWork(currentUser, title, priority, note, flag, helper);
                     form.reset();
+                    document.getElementById('workHelperGroup').style.display = 'none';
                     renderStaffView(currentUser);
                 };
+                form.addEventListener('reset', function() {
+                    document.getElementById('workHelperGroup').style.display = 'none';
+                });
             }
         }
 
@@ -1153,7 +1184,8 @@
                         '完成時間': work.completedAt || '',
                         '耗時': duration,
                         '備註': work.note || '',
-                        '主管留言': work.managerNote || ''
+                        '主管留言': work.managerNote || '',
+                        '特別標記': work.flag === '主管注意' ? '需主管注意' : work.flag === '隊友協助' ? `需${staffNames[work.helper] || '隊友'}協助` : ''
                     });
                 });
             });
@@ -1178,7 +1210,8 @@
                 { wch: 18 },  // 完成時間
                 { wch: 12 },  // 耗時
                 { wch: 30 },  // 備註
-                { wch: 30 }   // 主管留言
+                { wch: 30 },  // 主管留言
+                { wch: 15 }   // 特別標記
             ];
 
             // 下載文件
@@ -1223,17 +1256,21 @@
             attachFormListener();
         });
 
-        function addWork(user, title, priority, note) {
+        function addWork(user, title, priority, note, flag, helper) {
             if (!appData.works[user]) appData.works[user] = [];
 
-            appData.works[user].push({
+            const work = {
                 id: Date.now().toString(),
                 title: title,
                 priority: priority,
                 note: note,
                 status: '進行中',
                 createdAt: new Date().toLocaleString('zh-TW')
-            });
+            };
+            if (flag) work.flag = flag;
+            if (flag === '隊友協助' && helper) work.helper = helper;
+
+            appData.works[user].push(work);
 
             saveWorks();
         }
