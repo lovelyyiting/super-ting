@@ -571,6 +571,26 @@
             <div class="dashboard-grid" id="dashboardGrid"></div>
 
             <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
+                <h3>⚙️ 人員管理</h3>
+                <p style="color: #666; margin-bottom: 15px;">修改生管名字</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">生管 1</label>
+                        <input type="text" id="staffName1" placeholder="Stella" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">生管 2</label>
+                        <input type="text" id="staffName2" placeholder="小樂" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">生管 3</label>
+                        <input type="text" id="staffName3" placeholder="伶佳" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                </div>
+                <button onclick="saveStaffNames()" class="submit-btn" style="margin-bottom: 20px;">💾 保存名字</button>
+            </div>
+
+            <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
                 <h3>📊 工作數據導出</h3>
                 <p style="color: #666; margin-bottom: 15px;">導出所有工作詳情，包含接案時間、完成時間、耗時等</p>
                 <button onclick="exportToExcel()" class="submit-btn">📥 導出 Excel</button>
@@ -634,6 +654,50 @@
             if (!localStorage.getItem('announcements')) {
                 localStorage.setItem('announcements', JSON.stringify([]));
             }
+            loadStaffNames();
+        }
+
+        // 讀取自定義人員名字
+        function loadStaffNames() {
+            const customNames = JSON.parse(localStorage.getItem('customStaffNames') || '{}');
+            const defaultNames = ['stella', 'xiaole', 'lingjia'];
+
+            defaultNames.forEach((key, index) => {
+                staffNames[key] = customNames[key] || Object.values(staffNames)[index] || ['Stella', '小樂', '伶佳'][index];
+            });
+
+            // 如果在主管視圖，更新輸入框
+            if (currentUser === 'christine') {
+                document.getElementById('staffName1').value = staffNames['stella'];
+                document.getElementById('staffName2').value = staffNames['xiaole'];
+                document.getElementById('staffName3').value = staffNames['lingjia'];
+            }
+        }
+
+        // 保存自定義人員名字
+        function saveStaffNames() {
+            const name1 = document.getElementById('staffName1').value.trim();
+            const name2 = document.getElementById('staffName2').value.trim();
+            const name3 = document.getElementById('staffName3').value.trim();
+
+            if (!name1 || !name2 || !name3) {
+                alert('請填入所有生管名字');
+                return;
+            }
+
+            const customNames = {
+                'stella': name1,
+                'xiaole': name2,
+                'lingjia': name3
+            };
+
+            localStorage.setItem('customStaffNames', JSON.stringify(customNames));
+            staffNames['stella'] = name1;
+            staffNames['xiaole'] = name2;
+            staffNames['lingjia'] = name3;
+
+            alert('✅ 人員名字已保存！');
+            renderDashboard();
         }
 
         // 選擇身份
@@ -674,6 +738,7 @@
 
             if (user === 'christine') {
                 document.getElementById('managerView').classList.add('active');
+                loadStaffNames();
                 renderDashboard();
                 loadAnnouncements('manager');
             } else if (user === 'penny') {
