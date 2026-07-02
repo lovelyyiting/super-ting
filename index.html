@@ -714,20 +714,46 @@
             // 監聽連線狀態
             db.ref('.info/connected').on('value', snap => setSyncStatus(snap.val() === true));
 
-            // 一次性遷移：雲端還沒有資料時，把這台裝置的本機資料上傳
+            // 資料搬家：把這台裝置的本機資料「合併」上傳到雲端
+            // （只補上雲端沒有的項目，不會覆蓋其他裝置已上傳的資料）
+            const localWorks = appData.works;
+            const localAnnouncements = appData.announcements;
+            const localNames = appData.customStaffNames;
+
             db.ref('works').once('value').then(snap => {
-                if (!snap.exists() && Object.keys(appData.works).length > 0) {
-                    db.ref('works').set(appData.works);
-                }
+                const cloud = normalizeWorks(snap.val());
+                let changed = false;
+                Object.keys(localWorks).forEach(user => {
+                    const cloudList = cloud[user] || [];
+                    const cloudIds = {};
+                    cloudList.forEach(w => { if (w && w.id) cloudIds[w.id] = true; });
+                    (localWorks[user] || []).forEach(w => {
+                        if (w && w.id && !cloudIds[w.id]) {
+                            cloudList.push(w);
+                            changed = true;
+                        }
+                    });
+                    if (cloudList.length > 0) cloud[user] = cloudList;
+                });
+                if (changed) db.ref('works').set(cloud);
             });
             db.ref('announcements').once('value').then(snap => {
-                if (!snap.exists() && appData.announcements.length > 0) {
-                    db.ref('announcements').set(appData.announcements);
-                }
+                const v = snap.val();
+                const cloud = v ? (Array.isArray(v) ? v.filter(Boolean) : Object.values(v)) : [];
+                const cloudIds = {};
+                cloud.forEach(a => { if (a && a.id) cloudIds[a.id] = true; });
+                let changed = false;
+                localAnnouncements.forEach(a => {
+                    if (a && a.id && !cloudIds[a.id]) {
+                        cloud.push(a);
+                        changed = true;
+                    }
+                });
+                if (changed) db.ref('announcements').set(cloud);
             });
             db.ref('customStaffNames').once('value').then(snap => {
-                if (!snap.exists() && Object.keys(appData.customStaffNames).length > 0) {
-                    db.ref('customStaffNames').set(appData.customStaffNames);
+                if (!snap.exists() && Object.keys(localNames).length > 0) {
+                    db.ref('customStaffNames').set(localNames);
                 }
             });
 
