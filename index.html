@@ -1024,6 +1024,8 @@
 
             if (work.note) html += `<div class="work-note">📝 ${work.note}</div>`;
 
+            if (work.managerNote) html += `<div class="work-note" style="background: #fff8e1; border-left: 3px solid #f0ad4e; padding: 4px 8px; margin-top: 4px; border-radius: 3px;">👑 主管留言：${work.managerNote}</div>`;
+
             // 顯示時間信息
             let timeInfo = '';
             if (work.createdAt) {
@@ -1057,8 +1059,41 @@
                 html += `<button class="work-btn delete-btn" onclick="deleteWork('${work.id}')">刪除</button>`;
             }
 
+            // 主管可對任何工作留言
+            if (currentUser === 'christine') {
+                html += `<button class="work-btn" style="background: #f0ad4e; color: white;" onclick="editManagerNote('${work.id}')">👑 留言</button>`;
+            }
+
             html += `</div></div>`;
             return html;
+        }
+
+        // 主管留言（新增/修改，清空內容即刪除留言）
+        function editManagerNote(workId) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以留言');
+                return;
+            }
+
+            let target = null;
+            Object.keys(appData.works).forEach(user => {
+                const work = (appData.works[user] || []).find(w => w.id === workId);
+                if (work) target = work;
+            });
+
+            if (!target) return;
+
+            const input = prompt('主管留言（清空內容並確認 = 刪除留言）:', target.managerNote || '');
+            if (input === null) return; // 按取消
+
+            if (input.trim()) {
+                target.managerNote = input.trim();
+            } else {
+                delete target.managerNote;
+            }
+
+            saveWorks();
+            rerenderCurrentView();
         }
 
         // 取得工作列表
@@ -1117,7 +1152,8 @@
                         '接案時間': work.createdAt || '',
                         '完成時間': work.completedAt || '',
                         '耗時': duration,
-                        '備註': work.note || ''
+                        '備註': work.note || '',
+                        '主管留言': work.managerNote || ''
                     });
                 });
             });
@@ -1141,7 +1177,8 @@
                 { wch: 18 },  // 接案時間
                 { wch: 18 },  // 完成時間
                 { wch: 12 },  // 耗時
-                { wch: 30 }   // 備註
+                { wch: 30 },  // 備註
+                { wch: 30 }   // 主管留言
             ];
 
             // 下載文件
