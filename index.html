@@ -623,6 +623,11 @@
                 </div>
             </div>
 
+            <div class="announcement-section" style="background: #fce4f1; border-color: #d63384;">
+                <h3>📌 指派工作追蹤</h3>
+                <div id="assignBoard"></div>
+            </div>
+
             <div class="dashboard-grid" id="dashboardGrid"></div>
 
             <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
@@ -1627,7 +1632,79 @@
             const gridId = view === 'manager' ? 'dashboardGrid' : 'viewerDashboardGrid';
             document.getElementById(gridId).innerHTML = html;
 
-            if (view === 'manager') renderAlerts('manager');
+            if (view === 'manager') {
+                renderAlerts('manager');
+                renderAssignBoard();
+            }
+        }
+
+        // 指派工作追蹤看板（主管專用，未完成卡越久排越前）
+        function renderAssignBoard() {
+            const el = document.getElementById('assignBoard');
+            if (!el) return;
+
+            const items = [];
+            Object.keys(appData.works).forEach(user => {
+                (appData.works[user] || []).forEach(w => {
+                    if (w.assignedBy) items.push({ owner: user, work: w });
+                });
+            });
+
+            if (items.length === 0) {
+                el.innerHTML = '<p style="color: #999;">目前沒有指派的工作</p>';
+                return;
+            }
+
+            const now = new Date();
+            function daysOf(w) {
+                const d = parseZhDate(w.createdAt);
+                return d ? Math.floor((now - d) / 86400000) : 0;
+            }
+
+            items.sort((a, b) => {
+                const ad = a.work.status === '完成' ? -1 : daysOf(a.work);
+                const bd = b.work.status === '完成' ? -1 : daysOf(b.work);
+                return bd - ad;
+            });
+
+            let html = '';
+            items.forEach(item => {
+                const work = item.work;
+                const statusClass = work.status === '進行中' ? 'status-doing' : work.status === '等待中' ? 'status-waiting' : 'status-done';
+
+                const progress = Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {});
+                const accepted = progress.find(p => p && p.text === '已確認接案');
+                let acceptBadge = '';
+                if (work.status !== '完成') {
+                    acceptBadge = accepted
+                        ? ` <span style="background: #28a745; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">✅ 已接案 ${accepted.time || ''}</span>`
+                        : ` <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">⏳ 尚未確認接案</span>`;
+                }
+
+                let warnBadge = '';
+                if (work.status !== '完成') {
+                    const days = daysOf(work);
+                    if (days >= 7) {
+                        warnBadge = ` <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">🚨 已 ${days} 天未完成</span>`;
+                    } else if (days >= 3) {
+                        warnBadge = ` <span style="background: #fd7e14; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">⚠️ 已 ${days} 天未完成</span>`;
+                    }
+                }
+
+                const dim = work.status === '完成' ? 'opacity: 0.55;' : '';
+                html += `<div class="announcement-item" style="${dim}">
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <strong>${staffNames[item.owner] || item.owner}</strong>
+                            <span>${work.title}</span>
+                            <span class="work-status ${statusClass}">${work.status}</span>${acceptBadge}${warnBadge}
+                        </div>
+                        <div class="announcement-time">指派時間: ${work.createdAt || ''}${work.note ? '｜備註: ' + work.note : ''}</div>
+                    </div>
+                </div>`;
+            });
+
+            el.innerHTML = html;
         }
 
         // 公布欄
