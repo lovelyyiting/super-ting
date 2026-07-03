@@ -487,9 +487,9 @@
         <div id="identityView" class="identity-view active">
             <h2>請選擇身份登入</h2>
             <div class="identity-buttons">
-                <button class="identity-btn staff" onclick="selectIdentity('stella')">👩‍💼 Stella</button>
-                <button class="identity-btn staff" onclick="selectIdentity('xiaole')">👩‍💼 小樂</button>
-                <button class="identity-btn staff" onclick="selectIdentity('lingjia')">👩‍💼 伶佳</button>
+                <button class="identity-btn staff" id="identityBtn-stella" onclick="selectIdentity('stella')">👩‍💼 Stella</button>
+                <button class="identity-btn staff" id="identityBtn-xiaole" onclick="selectIdentity('xiaole')">👩‍💼 小樂</button>
+                <button class="identity-btn staff" id="identityBtn-lingjia" onclick="selectIdentity('lingjia')">👩‍💼 伶佳</button>
                 <button class="identity-btn manager" onclick="selectIdentity('christine')">👔 Christine</button>
                 <button class="identity-btn viewer" onclick="selectIdentity('penny')">👑 Penny</button>
             </div>
@@ -709,6 +709,14 @@
         </div>
     </div>
 
+    <!-- 回覆點名對象選擇 -->
+    <div id="notifyModal" class="password-modal">
+        <div class="password-box">
+            <h3>要提醒誰看這則回覆？</h3>
+            <div id="notifyModalButtons" style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;"></div>
+        </div>
+    </div>
+
     <script>
         // Firebase 配置（連接雲端資料庫，只需要資料庫網址）
         const firebaseConfig = {
@@ -900,6 +908,10 @@
             const defaults = { stella: 'Stella', xiaole: '小樂', lingjia: '伶佳' };
             Object.keys(defaults).forEach(key => {
                 staffNames[key] = appData.customStaffNames[key] || defaults[key];
+
+                // 同步更新主畫面的身份按鈕名字
+                const btn = document.getElementById('identityBtn-' + key);
+                if (btn) btn.textContent = `👩‍💼 ${staffNames[key]}`;
             });
 
             // 如果在主管視圖，更新輸入框
@@ -930,9 +942,7 @@
             appData.customStaffNames = customNames;
             localStorage.setItem('customStaffNames', JSON.stringify(customNames));
             if (db) db.ref('customStaffNames').set(customNames).catch(e => console.log('雲端儲存失敗', e));
-            staffNames['stella'] = name1;
-            staffNames['xiaole'] = name2;
-            staffNames['lingjia'] = name3;
+            loadStaffNames();
 
             alert('✅ 人員名字已保存！');
             renderDashboard();
@@ -1599,7 +1609,9 @@
             });
         }
 
-        // 回覆公告（可選擇點名提醒對象）
+        // 回覆公告：輸入內容後跳出選人視窗（按按鈕選擇提醒對象）
+        let pendingReply = null;
+
         function replyAnnouncement(annId) {
             if (!currentUser) return;
 
@@ -1609,25 +1621,60 @@
             const text = prompt('回覆這則公告:');
             if (text === null || !text.trim()) return;
 
+            pendingReply = { annId: annId, text: text.trim() };
+
             const keys = ['christine', 'stella', 'xiaole', 'lingjia', 'penny'].filter(k => k !== currentUser);
-            let menu = '需要提醒誰看這則回覆嗎？輸入編號（不提醒就留空按確定）:\n';
-            keys.forEach((k, i) => { menu += `${i + 1}. ${displayNameOf(k)}\n`; });
-            const pick = prompt(menu, '');
-            let notify = '';
-            if (pick !== null && pick.trim()) {
-                const idx = parseInt(pick.trim(), 10) - 1;
-                if (idx >= 0 && idx < keys.length) notify = keys[idx];
-            }
+            let btns = keys.map(k => `<button class="submit-btn" style="width: 100%; margin: 0;" onclick="finishReply('${k}')">📣 ${displayNameOf(k)}</button>`).join('');
+            btns += `<button class="cancel-btn" style="width: 100%; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="finishReply('')">不提醒，直接送出</button>`;
+            document.getElementById('notifyModalButtons').innerHTML = btns;
+            document.getElementById('notifyModal').classList.add('active');
+        }
+
+        // 完成回覆（notify 為空字串代表不提醒）
+        function finishReply(notify) {
+            document.getElementById('notifyModal').classList.remove('active');
+            if (!pendingReply) return;
+
+            const ann = appData.announcements.find(a => a.id === pendingReply.annId);
+            const text = pendingReply.text;
+            pendingReply = null;
+            if (!ann) return;
 
             if (!Array.isArray(ann.replies)) ann.replies = Object.values(ann.replies || {});
             const reply = {
                 rid: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 author: currentDisplayName(),
-                text: text.trim(),
+                text: text,
                 time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
             };
             if (notify) reply.notify = notify;
             ann.replies.push(reply);
+
+            saveAnnouncements();
+            const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                              document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+            loadAnnouncements(currentView);
+        }
+
+        // 刪除回覆（僅主管）
+        function deleteReply(annId, ridOrIdx) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以刪除回覆');
+                return;
+            }
+
+            const ann = appData.announcements.find(a => a.id === annId);
+            if (!ann) return;
+
+            if (!confirm('確定要刪除這則回覆嗎？')) return;
+
+            let replies = Array.isArray(ann.replies) ? ann.replies : Object.values(ann.replies || {});
+            if (typeof ridOrIdx === 'number') {
+                replies.splice(ridOrIdx, 1);
+            } else {
+                replies = replies.filter(r => r.rid !== ridOrIdx);
+            }
+            ann.replies = replies;
 
             saveAnnouncements();
             const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
@@ -1706,10 +1753,11 @@
 
                 let repliesHtml = '';
                 const replies = Array.isArray(ann.replies) ? ann.replies : Object.values(ann.replies || {});
-                replies.forEach(r => {
+                replies.forEach((r, ridx) => {
                     if (r && r.text) {
                         const replyNotify = r.notify ? ` <span style="background: #f0ad4e; color: white; padding: 1px 6px; border-radius: 8px; font-size: 11px; white-space: nowrap;">📣 ${displayNameOf(r.notify)}</span>` : '';
-                        repliesHtml += `<div style="margin-left: 20px; margin-top: 6px; padding: 6px 10px; background: #f0f2ff; border-left: 3px solid #667eea; border-radius: 3px; font-size: 13px;">↳ <strong>${r.author}</strong>：${r.text}${replyNotify} <span style="color: #999; font-size: 11px;">${r.time || ''}</span></div>`;
+                        const delReplyBtn = currentUser === 'christine' ? ` <button class="work-btn delete-btn" style="padding: 2px 8px; font-size: 11px;" onclick="deleteReply('${ann.id}', ${r.rid ? `'${r.rid}'` : ridx})">刪除</button>` : '';
+                        repliesHtml += `<div style="margin-left: 20px; margin-top: 6px; padding: 6px 10px; background: #f0f2ff; border-left: 3px solid #667eea; border-radius: 3px; font-size: 13px;">↳ <strong>${r.author}</strong>：${r.text}${replyNotify} <span style="color: #999; font-size: 11px;">${r.time || ''}</span>${delReplyBtn}</div>`;
                     }
                 });
 
