@@ -1056,7 +1056,23 @@
             renderAlerts('staff', user);
         }
 
-        // 渲染工作列表 (按狀態分組)
+        // 狀態分組的收合狀態（每台裝置各自記住，「完成」預設收合）
+        let collapsedSections = JSON.parse(localStorage.getItem('collapsedSections') || '{}');
+
+        function isSectionCollapsed(owner, status) {
+            const key = owner + '|' + status;
+            if (key in collapsedSections) return collapsedSections[key];
+            return status === '完成';
+        }
+
+        function toggleSection(owner, status) {
+            const key = owner + '|' + status;
+            collapsedSections[key] = !isSectionCollapsed(owner, status);
+            localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
+            rerenderCurrentView();
+        }
+
+        // 渲染工作列表 (按狀態分組，可點標題收合)
         function renderWorksByStatus(works, owner, canEdit = false) {
             const statuses = ['進行中', '等待中', '完成'];
             let html = '';
@@ -1065,12 +1081,15 @@
                 const statusWorks = works.filter(w => w.status === status);
                 if (statusWorks.length === 0) return;
 
+                const collapsed = isSectionCollapsed(owner, status);
                 html += `<div class="work-section">
-                    <h3>${status} (${statusWorks.length})</h3>`;
+                    <h3 style="cursor: pointer; user-select: none;" onclick="toggleSection('${owner}', '${status}')">${collapsed ? '▶' : '▼'} ${status} (${statusWorks.length})</h3>`;
 
-                statusWorks.forEach(work => {
-                    html += renderWorkItem(work, owner, canEdit);
-                });
+                if (!collapsed) {
+                    statusWorks.forEach(work => {
+                        html += renderWorkItem(work, owner, canEdit);
+                    });
+                }
 
                 html += '</div>';
             });
@@ -1359,7 +1378,7 @@
             if (!appData.works[user]) appData.works[user] = [];
 
             const work = {
-                id: Date.now().toString(),
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 title: title,
                 priority: priority,
                 note: note,
@@ -1488,7 +1507,7 @@
             const importanceOrder = { '緊急': 0, '重要': 1, '普通': 2 };
 
             appData.announcements.push({
-                id: Date.now().toString(),
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 author: authorName,
                 text: text,
                 time: new Date().toLocaleString('zh-TW'),
@@ -1515,7 +1534,7 @@
             const importanceOrder = { '緊急': 0, '重要': 1, '普通': 2 };
 
             appData.announcements.push({
-                id: Date.now().toString(),
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 author: authorName,
                 text: text,
                 time: new Date().toLocaleString('zh-TW'),
@@ -1621,7 +1640,7 @@
             const authorName = view === 'manager' ? 'Christine' : view === 'viewer' ? 'Penny' : staffNames[currentUser];
 
             appData.shipments.push({
-                id: Date.now().toString(),
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 date: date,
                 text: text.trim(),
                 author: authorName,
