@@ -1670,30 +1670,67 @@
             }
         }
 
-        // 顯示出貨需求（依出貨日期由近到遠排序）
+        // 單筆出貨需求顯示
+        function renderShipmentItem(ship) {
+            const badge = shipmentBadge(ship.date);
+            const dateDisplay = ship.date ? ship.date.replace(/^\d{4}-/, '').replace('-', '/') : '';
+            const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" style="margin-left: auto;" onclick="deleteShipment('${ship.id}')">刪除</button>` : '';
+
+            return `<div class="announcement-item">
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="background: ${badge.color}; color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📅 ${dateDisplay} ${badge.text}</span>
+                        <strong>${ship.text}</strong>
+                    </div>
+                    <div class="announcement-author">📝 ${ship.author}</div>
+                    <div class="announcement-time">${ship.time}</div>
+                </div>
+                ${deleteBtn}
+            </div>`;
+        }
+
+        // 切換「一週後的出貨」收合
+        function toggleLaterShipments() {
+            const key = 'shipments|later';
+            const cur = (key in collapsedSections) ? collapsedSections[key] : true;
+            collapsedSections[key] = !cur;
+            localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
+
+            const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                              document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+            loadShipments(currentView);
+        }
+
+        // 顯示出貨需求（依日期排序；預設只展開一週內，之後的收合）
         function loadShipments(view) {
             const shipments = appData.shipments.slice();
             shipments.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
 
-            let html = '';
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const withinWeek = [];
+            const later = [];
 
             shipments.forEach(ship => {
-                const badge = shipmentBadge(ship.date);
-                const dateDisplay = ship.date ? ship.date.replace(/^\d{4}-/, '').replace('-', '/') : '';
-                const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" style="margin-left: auto;" onclick="deleteShipment('${ship.id}')">刪除</button>` : '';
-
-                html += `<div class="announcement-item">
-                    <div style="flex: 1;">
-                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <span style="background: ${badge.color}; color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📅 ${dateDisplay} ${badge.text}</span>
-                            <strong>${ship.text}</strong>
-                        </div>
-                        <div class="announcement-author">📝 ${ship.author}</div>
-                        <div class="announcement-time">${ship.time}</div>
-                    </div>
-                    ${deleteBtn}
-                </div>`;
+                const d = ship.date ? new Date(ship.date + 'T00:00:00') : null;
+                const diff = d && !isNaN(d.getTime()) ? Math.round((d - today) / 86400000) : Infinity;
+                (diff <= 7 ? withinWeek : later).push(ship);
             });
+
+            let html = '';
+            withinWeek.forEach(ship => { html += renderShipmentItem(ship); });
+            if (withinWeek.length === 0 && later.length > 0) {
+                html += '<p style="color: #999;">一週內沒有出貨</p>';
+            }
+
+            if (later.length > 0) {
+                const key = 'shipments|later';
+                const collapsed = (key in collapsedSections) ? collapsedSections[key] : true;
+                html += `<div style="cursor: pointer; user-select: none; color: #666; font-weight: bold; padding: 8px 0; border-top: 1px dashed #aaa; margin-top: 8px;" onclick="toggleLaterShipments()">${collapsed ? '▶' : '▼'} 一週後的出貨 (${later.length})</div>`;
+                if (!collapsed) {
+                    later.forEach(ship => { html += renderShipmentItem(ship); });
+                }
+            }
 
             const elementMap = {
                 'staff': 'staffShipmentList',
