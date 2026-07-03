@@ -721,7 +721,12 @@
 
         // 資料結構
         let currentUser = null;
-        const MANAGER_PASSWORD = '12345';
+        let pendingUser = null;
+        const USER_PASSWORDS = {
+            christine: 'GA4331',
+            xiaole: '12345',
+            stella: '0703'
+        };
         const staffNames = {
             stella: 'Stella',
             xiaole: '小樂',
@@ -929,7 +934,10 @@
 
         // 選擇身份
         function selectIdentity(identity) {
-            if (identity === 'christine') {
+            if (USER_PASSWORDS[identity]) {
+                pendingUser = identity;
+                const displayName = identity === 'christine' ? 'Christine 主管模式' : staffNames[identity];
+                document.querySelector('#passwordModal h3').textContent = `${displayName} 需要密碼`;
                 document.getElementById('passwordModal').classList.add('active');
                 document.getElementById('passwordInput').value = '';
                 document.getElementById('passwordInput').focus();
@@ -942,10 +950,11 @@
         // 檢查密碼
         function checkPassword() {
             const password = document.getElementById('passwordInput').value;
-            if (password === MANAGER_PASSWORD) {
-                currentUser = 'christine';
+            if (pendingUser && password === USER_PASSWORDS[pendingUser]) {
+                currentUser = pendingUser;
+                pendingUser = null;
                 document.getElementById('passwordModal').classList.remove('active');
-                enterView('christine');
+                enterView(currentUser);
             } else {
                 alert('密碼錯誤');
                 document.getElementById('passwordInput').value = '';
