@@ -515,6 +515,7 @@
                             <option value="重要">重要</option>
                             <option value="緊急">緊急</option>
                         </select>
+                        <select id="staffAnnouncementNotify" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;"></select>
                         <button onclick="postAnnounceAsStaff()" class="submit-btn" style="margin-top: 0; flex: 1;">發布</button>
                     </div>
                 </div>
@@ -601,6 +602,7 @@
                             <option value="重要">重要</option>
                             <option value="緊急">緊急</option>
                         </select>
+                        <select id="managerAnnouncementNotify" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;"></select>
                         <button onclick="postAnnouncement('christine')" class="submit-btn" style="margin-top: 0; flex: 1;">發布</button>
                     </div>
                 </div>
@@ -660,6 +662,8 @@
                 <button class="logout-btn" onclick="logout()">登出</button>
             </div>
 
+            <div id="viewerAlerts"></div>
+
             <div class="announcement-section">
                 <h3>📢 公布欄</h3>
                 <div id="viewerAnnouncementList"></div>
@@ -671,6 +675,7 @@
                             <option value="重要">重要</option>
                             <option value="緊急">緊急</option>
                         </select>
+                        <select id="viewerAnnouncementNotify" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;"></select>
                         <button onclick="postAnnouncement('penny')" class="submit-btn" style="margin-top: 0; flex: 1;">發布</button>
                     </div>
                 </div>
@@ -884,6 +889,7 @@
                 renderDashboard('viewer');
                 loadAnnouncements('viewer');
                 loadShipments('viewer');
+                renderAlerts('viewer');
             } else if (document.getElementById('staffView').classList.contains('active') && currentUser) {
                 renderStaffView(currentUser);
             }
@@ -983,6 +989,7 @@
                 renderDashboard('viewer');
                 loadAnnouncements('viewer');
                 loadShipments('viewer');
+                renderAlerts('viewer');
             } else {
                 document.getElementById('staffView').classList.add('active');
                 renderStaffView(user);
@@ -1014,6 +1021,7 @@
                         items.map(i => `<div style="color: #721c24; font-size: 14px; margin-top: 5px;">・${staffNames[i.owner] || i.owner}：${i.work.title}（${i.work.status}）</div>`).join('') +
                     `</div>`;
                 }
+                html += annAlertHtml('christine');
                 const el = document.getElementById('managerAlerts');
                 if (el) el.innerHTML = html;
             } else if (view === 'staff') {
@@ -1030,8 +1038,12 @@
                         items.map(i => `<div style="color: #0c5460; font-size: 14px; margin-top: 5px;">・${staffNames[i.owner] || i.owner} 請你協助：${i.work.title}（${i.work.status}）</div>`).join('') +
                     `</div>`;
                 }
+                html += annAlertHtml(user);
                 const el = document.getElementById('staffAlerts');
                 if (el) el.innerHTML = html;
+            } else if (view === 'viewer') {
+                const el = document.getElementById('viewerAlerts');
+                if (el) el.innerHTML = annAlertHtml('penny');
             }
         }
 
@@ -1497,6 +1509,8 @@
 
             const text = document.getElementById(textareaId).value;
             const importance = document.getElementById(importanceId).value;
+            const notifyId = viewType === 'manager' ? 'managerAnnouncementNotify' : 'viewerAnnouncementNotify';
+            const notify = document.getElementById(notifyId).value;
 
             if (!text.trim()) {
                 alert('請輸入訊息');
@@ -1506,24 +1520,28 @@
             const authorName = author === 'christine' ? 'Christine' : 'Penny';
             const importanceOrder = { '緊急': 0, '重要': 1, '普通': 2 };
 
-            appData.announcements.push({
+            const ann = {
                 id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 author: authorName,
                 text: text,
                 time: new Date().toLocaleString('zh-TW'),
                 importance: importance,
                 importanceOrder: importanceOrder[importance]
-            });
+            };
+            if (notify) ann.notify = notify;
+            appData.announcements.push(ann);
 
             saveAnnouncements();
             document.getElementById(textareaId).value = '';
             document.getElementById(importanceId).value = '普通';
+            document.getElementById(notifyId).value = '';
             loadAnnouncements(viewType);
         }
 
         function postAnnounceAsStaff() {
             const text = document.getElementById('staffAnnouncement').value;
             const importance = document.getElementById('staffAnnouncementImportance').value;
+            const notify = document.getElementById('staffAnnouncementNotify').value;
 
             if (!text.trim()) {
                 alert('請輸入訊息');
@@ -1533,19 +1551,99 @@
             const authorName = staffNames[currentUser];
             const importanceOrder = { '緊急': 0, '重要': 1, '普通': 2 };
 
-            appData.announcements.push({
+            const ann = {
                 id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 author: authorName,
                 text: text,
                 time: new Date().toLocaleString('zh-TW'),
                 importance: importance,
                 importanceOrder: importanceOrder[importance]
-            });
+            };
+            if (notify) ann.notify = notify;
+            appData.announcements.push(ann);
 
             saveAnnouncements();
             document.getElementById('staffAnnouncement').value = '';
             document.getElementById('staffAnnouncementImportance').value = '普通';
+            document.getElementById('staffAnnouncementNotify').value = '';
             loadAnnouncements('staff');
+        }
+
+        // 身份對應的顯示名稱
+        function displayNameOf(key) {
+            if (key === 'christine') return 'Christine';
+            if (key === 'penny') return 'Penny';
+            return staffNames[key] || key;
+        }
+
+        // 目前登入者的顯示名稱
+        function currentDisplayName() {
+            return displayNameOf(currentUser);
+        }
+
+        // 填入「提醒對象」下拉選單（帶入最新的人員名字，排除自己）
+        function populateNotifySelects() {
+            const ids = ['staffAnnouncementNotify', 'managerAnnouncementNotify', 'viewerAnnouncementNotify'];
+            const keys = ['christine', 'stella', 'xiaole', 'lingjia', 'penny'];
+            ids.forEach(id => {
+                const sel = document.getElementById(id);
+                if (!sel) return;
+                const cur = sel.value;
+                let opts = '<option value="">提醒對象：無</option>';
+                keys.forEach(k => {
+                    if (k === currentUser) return;
+                    opts += `<option value="${k}">📣 ${displayNameOf(k)}</option>`;
+                });
+                sel.innerHTML = opts;
+                sel.value = cur || '';
+            });
+        }
+
+        // 回覆公告
+        function replyAnnouncement(annId) {
+            if (!currentUser) return;
+
+            const ann = appData.announcements.find(a => a.id === annId);
+            if (!ann) return;
+
+            const text = prompt('回覆這則公告:');
+            if (text === null || !text.trim()) return;
+
+            if (!Array.isArray(ann.replies)) ann.replies = Object.values(ann.replies || {});
+            ann.replies.push({
+                author: currentDisplayName(),
+                text: text.trim(),
+                time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+            });
+
+            saveAnnouncements();
+            const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                              document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+            loadAnnouncements(currentView);
+        }
+
+        // 尚未確認的「點名提醒」公告（依身份，已按「知道了」的記在本機）
+        function annAlertsFor(identity) {
+            const readIds = JSON.parse(localStorage.getItem('readAnnNotify') || '[]');
+            return appData.announcements.filter(a => a.notify === identity && readIds.indexOf(a.id) < 0);
+        }
+
+        // 標記點名提醒為已讀（只記在這台裝置）
+        function markAnnRead(annId) {
+            const readIds = JSON.parse(localStorage.getItem('readAnnNotify') || '[]');
+            if (readIds.indexOf(annId) < 0) readIds.push(annId);
+            localStorage.setItem('readAnnNotify', JSON.stringify(readIds));
+            rerenderCurrentView();
+        }
+
+        // 產生點名提醒橫幅 HTML
+        function annAlertHtml(identity) {
+            const items = annAlertsFor(identity);
+            if (items.length === 0) return '';
+            return `<div style="background: #fff3cd; border: 1px solid #f0ad4e; border-radius: 8px; padding: 12px 15px; margin-bottom: 15px;">
+                <strong style="color: #856404;">📣 有 ${items.length} 則公告點名提醒你</strong>` +
+                items.map(a => `<div style="color: #856404; font-size: 14px; margin-top: 5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">・${a.author}：${a.text}<button class="work-btn" style="background: #f0ad4e; color: white;" onclick="markAnnRead('${a.id}')">知道了</button></div>`).join('') +
+            `</div>`;
         }
 
         function deleteAnnouncement(annId) {
@@ -1574,18 +1672,27 @@
 
             announcements.forEach(ann => {
                 const importanceEmoji = ann.importance === '緊急' ? '🚨' : ann.importance === '重要' ? '⚠️' : '📌';
-                const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" style="margin-left: auto;" onclick="deleteAnnouncement('${ann.id}')">刪除</button>` : '';
+                const replyBtn = currentUser ? `<button class="work-btn" style="background: #667eea; color: white;" onclick="replyAnnouncement('${ann.id}')">回覆</button>` : '';
+                const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" onclick="deleteAnnouncement('${ann.id}')">刪除</button>` : '';
+                const notifyBadge = ann.notify ? ` <span style="background: #f0ad4e; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📣 提醒 ${displayNameOf(ann.notify)}</span>` : '';
+
+                let repliesHtml = '';
+                const replies = Array.isArray(ann.replies) ? ann.replies : Object.values(ann.replies || {});
+                replies.forEach(r => {
+                    if (r && r.text) repliesHtml += `<div style="margin-left: 20px; margin-top: 6px; padding: 6px 10px; background: #f0f2ff; border-left: 3px solid #667eea; border-radius: 3px; font-size: 13px;">↳ <strong>${r.author}</strong>：${r.text} <span style="color: #999; font-size: 11px;">${r.time || ''}</span></div>`;
+                });
 
                 html += `<div class="announcement-item">
                     <div style="flex: 1;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                             <span>${importanceEmoji} ${ann.importance}</span>
-                            <strong>${ann.text}</strong>
+                            <strong>${ann.text}</strong>${notifyBadge}
                         </div>
                         <div class="announcement-author">📝 ${ann.author}</div>
                         <div class="announcement-time">${ann.time}</div>
+                        ${repliesHtml}
                     </div>
-                    ${deleteBtn}
+                    <div style="display: flex; gap: 5px; margin-left: auto;">${replyBtn}${deleteBtn}</div>
                 </div>`;
             });
 
@@ -1599,6 +1706,8 @@
             if (elementId) {
                 document.getElementById(elementId).innerHTML = html || '<p style="color: #999;">暫無公告</p>';
             }
+
+            populateNotifySelects();
         }
 
         // ===== 近期出貨需求 =====
