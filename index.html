@@ -1114,8 +1114,8 @@
             // 計算耗時
             let durationText = '';
             if (work.createdAt) {
-                const createdDate = new Date(work.createdAt);
-                const completedDate = work.completedAt ? new Date(work.completedAt) : new Date();
+                const createdDate = parseZhDate(work.createdAt) || new Date(work.createdAt);
+                const completedDate = work.completedAt ? (parseZhDate(work.completedAt) || new Date(work.completedAt)) : new Date();
                 const durationMs = completedDate - createdDate;
                 const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
                 const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
@@ -1135,14 +1135,21 @@
 
             if (work.managerNote) html += `<div class="work-note" style="background: #fff8e1; border-left: 3px solid #f0ad4e; padding: 4px 8px; margin-top: 4px; border-radius: 3px;">👑 Christine 留言：${work.managerNote}</div>`;
 
+            const progressList = Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {});
+            progressList.forEach(p => {
+                if (p && p.text) html += `<div class="work-note" style="background: #eef7ee; border-left: 3px solid #28a745; padding: 4px 8px; margin-top: 4px; border-radius: 3px;">🔄 ${p.time || ''}｜${p.text}</div>`;
+            });
+
             // 顯示時間信息
             let timeInfo = '';
             if (work.createdAt) {
-                const createdTime = new Date(work.createdAt).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-                timeInfo += `📅 接案: ${createdTime}`;
+                const cd = parseZhDate(work.createdAt);
+                const createdTime = cd ? cd.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : work.createdAt;
+                timeInfo += `📅 接案日期: ${createdTime}`;
             }
             if (work.completedAt) {
-                const completedTime = new Date(work.completedAt).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                const fd = parseZhDate(work.completedAt);
+                const completedTime = fd ? fd.toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : work.completedAt;
                 timeInfo += ` | 完成: ${completedTime}`;
             }
             if (durationText) {
@@ -1168,6 +1175,7 @@
                     <option value="等待中">等待中</option>
                     <option value="完成">完成</option>
                 </select>`;
+                html += `<button class="work-btn" style="background: #28a745; color: white;" onclick="addProgress('${work.id}')">🔄 更新進度</button>`;
                 html += `<button class="work-btn edit-btn" onclick="editWork('${work.id}')">編輯</button>`;
                 html += `<button class="work-btn delete-btn" onclick="deleteWork('${work.id}')">刪除</button>`;
             }
@@ -1274,6 +1282,7 @@
                         '耗時': duration,
                         '備註': work.note || '',
                         '主管留言': work.managerNote || '',
+                        '進度記錄': (Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {})).map(p => `[${p.time}] ${p.text}`).join('\n'),
                         '特別標記': work.flag === '主管注意' ? '需主管注意' : work.flag === '隊友協助' ? `需${staffNames[work.helper] || '隊友'}協助` : ''
                     });
                 });
@@ -1300,6 +1309,7 @@
                 { wch: 12 },  // 耗時
                 { wch: 30 },  // 備註
                 { wch: 30 },  // 主管留言
+                { wch: 40 },  // 進度記錄
                 { wch: 15 }   // 特別標記
             ];
 
@@ -1390,6 +1400,24 @@
                 saveWorks();
                 renderStaffView(currentUser);
             }
+        }
+
+        // 更新進度：在工作上追加一筆進度記錄
+        function addProgress(workId) {
+            const work = (appData.works[currentUser] || []).find(w => w.id === workId);
+            if (!work) return;
+
+            const text = prompt('更新進度（例如：已聯絡供應商，等回覆）:');
+            if (text === null || !text.trim()) return;
+
+            if (!Array.isArray(work.progress)) work.progress = Object.values(work.progress || {});
+            work.progress.push({
+                text: text.trim(),
+                time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+            });
+
+            saveWorks();
+            renderStaffView(currentUser);
         }
 
         // 編輯工作 (簡化版)
