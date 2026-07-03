@@ -643,6 +643,34 @@
             </div>
 
             <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
+                <h3>📌 指派工作</h3>
+                <p style="color: #666; margin-bottom: 15px;">直接安插工作給指定生管，對方會收到警示通知</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">指派給</label>
+                        <select id="assignTarget" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;"></select>
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">工作名稱 *</label>
+                        <input type="text" id="assignTitle" placeholder="例如：急件出貨單 #123" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">優先度</label>
+                        <select id="assignPriority" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                            <option value="高" selected>高</option>
+                            <option value="中">中</option>
+                            <option value="低">低</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">備註（選填）</label>
+                        <input type="text" id="assignNote" placeholder="說明、注意事項" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                </div>
+                <button onclick="assignWork()" class="submit-btn">📌 指派</button>
+            </div>
+
+            <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
                 <h3>📊 工作數據導出</h3>
                 <p style="color: #666; margin-bottom: 15px;">導出所有工作詳情，包含接案時間、完成時間、耗時等</p>
                 <button onclick="exportToExcel()" class="submit-btn">📥 導出 Excel</button>
@@ -920,6 +948,57 @@
                 document.getElementById('staffName2').value = staffNames['xiaole'];
                 document.getElementById('staffName3').value = staffNames['lingjia'];
             }
+
+            // 更新「指派給」選單
+            const assignSel = document.getElementById('assignTarget');
+            if (assignSel) {
+                const cur = assignSel.value;
+                assignSel.innerHTML = Object.keys(staffNames).map(k => `<option value="${k}">${staffNames[k]}</option>`).join('');
+                if (cur) assignSel.value = cur;
+            }
+        }
+
+        // 主管指派工作給指定生管
+        function assignWork() {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以指派工作');
+                return;
+            }
+
+            const user = document.getElementById('assignTarget').value;
+            const title = document.getElementById('assignTitle').value;
+            const priority = document.getElementById('assignPriority').value;
+            const note = document.getElementById('assignNote').value;
+
+            if (!user || !title.trim()) {
+                alert('請選擇人員並填入工作名稱');
+                return;
+            }
+
+            if (!appData.works[user]) appData.works[user] = [];
+            appData.works[user].push({
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                title: title.trim(),
+                priority: priority,
+                note: note.trim(),
+                status: '等待中',
+                createdAt: new Date().toLocaleString('zh-TW'),
+                assignedBy: 'Christine'
+            });
+
+            saveWorks();
+            document.getElementById('assignTitle').value = '';
+            document.getElementById('assignNote').value = '';
+            renderDashboard('manager');
+            alert(`✅ 已指派給 ${staffNames[user]}，對方會收到警示通知`);
+        }
+
+        // 尚未確認的主管指派工作（已按「知道了」的記在本機）
+        function markAssignRead(workId) {
+            const readIds = JSON.parse(localStorage.getItem('readAssignedWorks') || '[]');
+            if (readIds.indexOf(workId) < 0) readIds.push(workId);
+            localStorage.setItem('readAssignedWorks', JSON.stringify(readIds));
+            rerenderCurrentView();
         }
 
         // 保存自定義人員名字
@@ -1048,6 +1127,16 @@
                         items.map(i => `<div style="color: #0c5460; font-size: 14px; margin-top: 5px;">・${staffNames[i.owner] || i.owner} 請你協助：${i.work.title}（${i.work.status}）</div>`).join('') +
                     `</div>`;
                 }
+                // 主管指派的新工作警示
+                const readAssign = JSON.parse(localStorage.getItem('readAssignedWorks') || '[]');
+                const assigned = (appData.works[user] || []).filter(w => w.assignedBy && w.status !== '完成' && readAssign.indexOf(w.id) < 0);
+                if (assigned.length > 0) {
+                    html += `<div style="background: #fce4f1; border: 1px solid #d63384; border-radius: 8px; padding: 12px 15px; margin-bottom: 15px;">
+                        <strong style="color: #a61e6b;">👔 主管指派了 ${assigned.length} 件工作給你</strong>` +
+                        assigned.map(w => `<div style="color: #a61e6b; font-size: 14px; margin-top: 5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">・${w.title}（優先度: ${w.priority || '中'}）<button class="work-btn" style="background: #d63384; color: white;" onclick="markAssignRead('${w.id}')">知道了</button></div>`).join('') +
+                    `</div>`;
+                }
+
                 html += annAlertHtml(user);
                 const el = document.getElementById('staffAlerts');
                 if (el) el.innerHTML = html;
@@ -1203,6 +1292,7 @@
             html += pendingBadge(work);
             if (work.priority) html += ` <span style="font-size: 12px; color: #666;">優先度: ${work.priority}</span>`;
 
+            if (work.assignedBy) html += ` <span style="background: #d63384; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">👔 主管指派</span>`;
             if (work.flag === '主管注意') html += ` <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">🚨 需主管注意</span>`;
             if (work.flag === '隊友協助') html += ` <span style="background: #17a2b8; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">🤝 需 ${staffNames[work.helper] || '隊友'} 協助</span>`;
 
