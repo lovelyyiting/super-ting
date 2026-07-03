@@ -502,6 +502,8 @@
                 <button class="logout-btn" onclick="logout()">登出</button>
             </div>
 
+            <div id="staffAlerts"></div>
+
             <div class="announcement-section">
                 <h3>📢 公布欄</h3>
                 <div id="staffAnnouncementList"></div>
@@ -585,6 +587,8 @@
                 <h2>🎯 即時戰情室</h2>
                 <button class="logout-btn" onclick="logout()">登出</button>
             </div>
+
+            <div id="managerAlerts"></div>
 
             <div class="announcement-section">
                 <h3>📢 公布欄</h3>
@@ -985,6 +989,43 @@
             document.getElementById('viewerView').classList.remove('active');
         }
 
+        // 特別標記提醒橫幅（主管看「需主管注意」，隊友看「需你協助」）
+        function renderAlerts(view, user) {
+            if (view === 'manager') {
+                const items = [];
+                Object.keys(appData.works).forEach(u => {
+                    (appData.works[u] || []).forEach(w => {
+                        if (w.flag === '主管注意' && w.status !== '完成') items.push({ owner: u, work: w });
+                    });
+                });
+                let html = '';
+                if (items.length > 0) {
+                    html = `<div style="background: #f8d7da; border: 1px solid #dc3545; border-radius: 8px; padding: 12px 15px; margin-bottom: 15px;">
+                        <strong style="color: #721c24;">🚨 有 ${items.length} 件工作需要主管注意</strong>` +
+                        items.map(i => `<div style="color: #721c24; font-size: 14px; margin-top: 5px;">・${staffNames[i.owner] || i.owner}：${i.work.title}（${i.work.status}）</div>`).join('') +
+                    `</div>`;
+                }
+                const el = document.getElementById('managerAlerts');
+                if (el) el.innerHTML = html;
+            } else if (view === 'staff') {
+                const items = [];
+                Object.keys(appData.works).forEach(u => {
+                    (appData.works[u] || []).forEach(w => {
+                        if (w.flag === '隊友協助' && w.helper === user && w.status !== '完成') items.push({ owner: u, work: w });
+                    });
+                });
+                let html = '';
+                if (items.length > 0) {
+                    html = `<div style="background: #d1ecf1; border: 1px solid #17a2b8; border-radius: 8px; padding: 12px 15px; margin-bottom: 15px;">
+                        <strong style="color: #0c5460;">🤝 有 ${items.length} 件工作需要你協助</strong>` +
+                        items.map(i => `<div style="color: #0c5460; font-size: 14px; margin-top: 5px;">・${staffNames[i.owner] || i.owner} 請你協助：${i.work.title}（${i.work.status}）</div>`).join('') +
+                    `</div>`;
+                }
+                const el = document.getElementById('staffAlerts');
+                if (el) el.innerHTML = html;
+            }
+        }
+
         // 渲染生管視圖
         function renderStaffView(user) {
             document.querySelector('#staffView .view-header h2').textContent = `📋 ${staffNames[user]} 的工作清單`;
@@ -1003,6 +1044,7 @@
             document.getElementById('staffWorkList').innerHTML = html;
             loadAnnouncements('staff');
             loadShipments('staff');
+            renderAlerts('staff', user);
         }
 
         // 渲染工作列表 (按狀態分組)
@@ -1350,6 +1392,8 @@
 
             const gridId = view === 'manager' ? 'dashboardGrid' : 'viewerDashboardGrid';
             document.getElementById(gridId).innerHTML = html;
+
+            if (view === 'manager') renderAlerts('manager');
         }
 
         // 公布欄
