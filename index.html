@@ -586,7 +586,10 @@
         <div id="managerView" class="main-view">
             <div class="view-header">
                 <h2>🎯 即時戰情室</h2>
-                <button class="logout-btn" onclick="logout()">登出</button>
+                <div style="display: flex; gap: 10px;">
+                    <button class="logout-btn" style="background: #d63384;" onclick="openAssignModal()">📌 指派工作</button>
+                    <button class="logout-btn" onclick="logout()">登出</button>
+                </div>
             </div>
 
             <div id="managerAlerts"></div>
@@ -640,34 +643,6 @@
                     </div>
                 </div>
                 <button onclick="saveStaffNames()" class="submit-btn" style="margin-bottom: 20px;">💾 保存名字</button>
-            </div>
-
-            <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
-                <h3>📌 指派工作</h3>
-                <p style="color: #666; margin-bottom: 15px;">直接安插工作給指定生管，對方會收到警示通知</p>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 15px;">
-                    <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">指派給</label>
-                        <select id="assignTarget" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;"></select>
-                    </div>
-                    <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">工作名稱 *</label>
-                        <input type="text" id="assignTitle" placeholder="例如：急件出貨單 #123" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
-                    </div>
-                    <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">優先度</label>
-                        <select id="assignPriority" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
-                            <option value="高" selected>高</option>
-                            <option value="中">中</option>
-                            <option value="低">低</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">備註（選填）</label>
-                        <input type="text" id="assignNote" placeholder="說明、注意事項" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
-                    </div>
-                </div>
-                <button onclick="assignWork()" class="submit-btn">📌 指派</button>
             </div>
 
             <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
@@ -742,6 +717,31 @@
         <div class="password-box">
             <h3>要提醒誰看這則回覆？</h3>
             <div id="notifyModalButtons" style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;"></div>
+        </div>
+    </div>
+
+    <!-- 主管指派工作視窗 -->
+    <div id="assignModal" class="password-modal">
+        <div class="password-box" style="text-align: left;">
+            <h3 style="text-align: center;">📌 指派工作</h3>
+            <div style="margin-top: 15px;">
+                <label style="font-weight: bold; display: block; margin-bottom: 5px;">指派給</label>
+                <select id="assignTarget" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 12px;"></select>
+                <label style="font-weight: bold; display: block; margin-bottom: 5px;">工作名稱 *</label>
+                <input type="text" id="assignTitle" placeholder="例如：急件出貨單 #123" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 12px;">
+                <label style="font-weight: bold; display: block; margin-bottom: 5px;">優先度</label>
+                <select id="assignPriority" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 12px;">
+                    <option value="高" selected>高</option>
+                    <option value="中">中</option>
+                    <option value="低">低</option>
+                </select>
+                <label style="font-weight: bold; display: block; margin-bottom: 5px;">備註（選填）</label>
+                <input type="text" id="assignNote" placeholder="說明、注意事項" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px;">
+                <div style="display: flex; gap: 10px;">
+                    <button class="submit-btn" style="flex: 1; margin: 0;" onclick="assignWork()">📌 指派</button>
+                    <button class="cancel-btn" style="flex: 1; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="closeAssignModal()">取消</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -958,6 +958,23 @@
             }
         }
 
+        // 開啟指派工作視窗（僅主管）
+        function openAssignModal() {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以指派工作');
+                return;
+            }
+            loadStaffNames();
+            document.getElementById('assignTitle').value = '';
+            document.getElementById('assignNote').value = '';
+            document.getElementById('assignModal').classList.add('active');
+            document.getElementById('assignTitle').focus();
+        }
+
+        function closeAssignModal() {
+            document.getElementById('assignModal').classList.remove('active');
+        }
+
         // 主管指派工作給指定生管
         function assignWork() {
             if (currentUser !== 'christine') {
@@ -989,6 +1006,7 @@
             saveWorks();
             document.getElementById('assignTitle').value = '';
             document.getElementById('assignNote').value = '';
+            closeAssignModal();
             renderDashboard('manager');
             alert(`✅ 已指派給 ${staffNames[user]}，對方會收到警示通知`);
         }
