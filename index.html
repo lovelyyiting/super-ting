@@ -1599,7 +1599,7 @@
             });
         }
 
-        // 回覆公告
+        // 回覆公告（可選擇點名提醒對象）
         function replyAnnouncement(annId) {
             if (!currentUser) return;
 
@@ -1609,12 +1609,25 @@
             const text = prompt('回覆這則公告:');
             if (text === null || !text.trim()) return;
 
+            const keys = ['christine', 'stella', 'xiaole', 'lingjia', 'penny'].filter(k => k !== currentUser);
+            let menu = '需要提醒誰看這則回覆嗎？輸入編號（不提醒就留空按確定）:\n';
+            keys.forEach((k, i) => { menu += `${i + 1}. ${displayNameOf(k)}\n`; });
+            const pick = prompt(menu, '');
+            let notify = '';
+            if (pick !== null && pick.trim()) {
+                const idx = parseInt(pick.trim(), 10) - 1;
+                if (idx >= 0 && idx < keys.length) notify = keys[idx];
+            }
+
             if (!Array.isArray(ann.replies)) ann.replies = Object.values(ann.replies || {});
-            ann.replies.push({
+            const reply = {
+                rid: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 author: currentDisplayName(),
                 text: text.trim(),
                 time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-            });
+            };
+            if (notify) reply.notify = notify;
+            ann.replies.push(reply);
 
             saveAnnouncements();
             const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
@@ -1622,10 +1635,25 @@
             loadAnnouncements(currentView);
         }
 
-        // 尚未確認的「點名提醒」公告（依身份，已按「知道了」的記在本機）
+        // 尚未確認的「點名提醒」（公告本身＋回覆，已按「知道了」的記在本機）
         function annAlertsFor(identity) {
             const readIds = JSON.parse(localStorage.getItem('readAnnNotify') || '[]');
-            return appData.announcements.filter(a => a.notify === identity && readIds.indexOf(a.id) < 0);
+            const items = [];
+            appData.announcements.forEach(a => {
+                if (a.notify === identity && readIds.indexOf(a.id) < 0) {
+                    items.push({ id: a.id, author: a.author, text: a.text });
+                }
+                const replies = Array.isArray(a.replies) ? a.replies : Object.values(a.replies || {});
+                replies.forEach((r, idx) => {
+                    if (r && r.notify === identity) {
+                        const rid = r.rid ? a.id + '_' + r.rid : a.id + '_r' + idx;
+                        if (readIds.indexOf(rid) < 0) {
+                            items.push({ id: rid, author: r.author, text: `回覆「${a.text}」：${r.text}` });
+                        }
+                    }
+                });
+            });
+            return items;
         }
 
         // 標記點名提醒為已讀（只記在這台裝置）
@@ -1679,7 +1707,10 @@
                 let repliesHtml = '';
                 const replies = Array.isArray(ann.replies) ? ann.replies : Object.values(ann.replies || {});
                 replies.forEach(r => {
-                    if (r && r.text) repliesHtml += `<div style="margin-left: 20px; margin-top: 6px; padding: 6px 10px; background: #f0f2ff; border-left: 3px solid #667eea; border-radius: 3px; font-size: 13px;">↳ <strong>${r.author}</strong>：${r.text} <span style="color: #999; font-size: 11px;">${r.time || ''}</span></div>`;
+                    if (r && r.text) {
+                        const replyNotify = r.notify ? ` <span style="background: #f0ad4e; color: white; padding: 1px 6px; border-radius: 8px; font-size: 11px; white-space: nowrap;">📣 ${displayNameOf(r.notify)}</span>` : '';
+                        repliesHtml += `<div style="margin-left: 20px; margin-top: 6px; padding: 6px 10px; background: #f0f2ff; border-left: 3px solid #667eea; border-radius: 3px; font-size: 13px;">↳ <strong>${r.author}</strong>：${r.text}${replyNotify} <span style="color: #999; font-size: 11px;">${r.time || ''}</span></div>`;
+                    }
                 });
 
                 html += `<div class="announcement-item">
