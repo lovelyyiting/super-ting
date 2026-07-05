@@ -1262,19 +1262,45 @@
             return d;
         }
 
-        // 進行天數標籤（只有進行中的工作顯示，從開始進行起算，越久顏色越深）
-        function pendingBadge(work) {
-            if (work.status !== '進行中') return '';
-            const base = work.startedAt || work.createdAt;
-            if (!base) return '';
-            const started = parseZhDate(base);
-            if (!started) return '';
-
-            const ms = new Date() - started;
+        // 毫秒轉成易讀的時間文字
+        function formatDuration(ms) {
+            if (isNaN(ms) || ms < 0) return '';
             const days = Math.floor(ms / 86400000);
             const hours = Math.floor(ms / 3600000);
-            if (ms < 0) return '';
+            const minutes = Math.floor(ms / 60000);
+            if (days > 0) return `${days}天${hours % 24}小時`;
+            if (hours > 0) return `${hours}小時`;
+            if (minutes > 0) return `${minutes}分鐘`;
+            return '未滿1分鐘';
+        }
 
+        // 實際作業時間（碼表累計；舊資料沒有記錄時回傳 null）
+        function netWorkMs(work) {
+            if (!work.accumMs && !work.workingSince) return null;
+            let ms = work.accumMs || 0;
+            if (work.workingSince && work.status === '進行中') {
+                const d = parseZhDate(work.workingSince) || new Date(work.workingSince);
+                if (!isNaN(d.getTime())) ms += Math.max(0, Date.now() - d.getTime());
+            }
+            return ms;
+        }
+
+        // 進行天數標籤（只有進行中的工作顯示，用實際作業時間，越久顏色越深）
+        function pendingBadge(work) {
+            if (work.status !== '進行中') return '';
+
+            let ms = netWorkMs(work);
+            if (ms === null) {
+                const base = work.startedAt || work.createdAt;
+                if (!base) return '';
+                const started = parseZhDate(base);
+                if (!started) return '';
+                ms = new Date() - started;
+            }
+            if (isNaN(ms) || ms < 0) return '';
+
+            const days = Math.floor(ms / 86400000);
+            const hours = Math.floor(ms / 3600000);
             const text = days >= 1 ? `已進行 ${days} 天` : `已進行 ${hours} 小時`;
             const color = days >= 7 ? '#dc3545' : days >= 3 ? '#fd7e14' : '#6c757d';
             return ` <span style="background: ${color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📌 ${text}</span>`;
@@ -1285,25 +1311,23 @@
             const statusClass = `status-${work.status === '進行中' ? 'doing' : work.status === '等待中' ? 'waiting' : 'done'}`;
             const statusMap = { '進行中': 'doing', '等待中': 'waiting', '完成': 'done' };
 
-            // 計算耗時（從「開始進行」起算，等待中不計時）
+            // 計算耗時：總時長（開始進行→完成）＋實際作業時間（碼表，等待暫停）
             let durationText = '';
             const durationBase = work.startedAt || work.createdAt;
             if (durationBase && (work.status === '完成' || work.status === '進行中')) {
-                const createdDate = parseZhDate(durationBase) || new Date(durationBase);
-                const completedDate = work.completedAt ? (parseZhDate(work.completedAt) || new Date(work.completedAt)) : new Date();
-                const durationMs = completedDate - createdDate;
-                const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
-                const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
-                const durationMinutes = Math.floor(durationMs / (1000 * 60));
+                const startDate = parseZhDate(durationBase) || new Date(durationBase);
+                const endDate = work.completedAt ? (parseZhDate(work.completedAt) || new Date(work.completedAt)) : new Date();
+                const totalMs = endDate - startDate;
+                const totalText = formatDuration(totalMs);
+                const net = netWorkMs(work);
 
-                if (durationDays > 0) {
-                    durationText = `⏱️ ${durationDays}天${durationHours % 24}小時`;
-                } else if (durationHours > 0) {
-                    durationText = `⏱️ ${durationHours}小時`;
-                } else if (durationMinutes > 0) {
-                    durationText = `⏱️ ${durationMinutes}分鐘`;
-                } else if (durationMinutes === 0 && work.completedAt) {
-                    durationText = '⏱️ 未滿1分鐘';
+                if (totalText) {
+                    if (net !== null && Math.abs(totalMs - net) >= 60000) {
+                        // 有暫停過（兩者差距超過一分鐘）：兩個都顯示
+                        durationText = `⏱️ 總時長 ${totalText}｜🔨 實際 ${formatDuration(net)}`;
+                    } else {
+                        durationText = `⏱️ ${totalText}`;
+                    }
                 }
             }
 
@@ -1452,16 +1476,11 @@
                     const completedDate = work.completedAt ? (parseZhDate(work.completedAt) || new Date(work.completedAt)) : null;
 
                     let duration = '';
+                    let netDuration = '';
                     if (createdDate && completedDate && work.status === '完成') {
-                        const durationMs = completedDate - createdDate;
-                        if (!isNaN(durationMs)) {
-                            const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
-                            const durationHours = Math.floor((durationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                            const durationMinutes = Math.floor(durationMs / (1000 * 60));
-                            duration = durationDays > 0 ? `${durationDays}天${durationHours}小時`
-                                     : durationHours > 0 ? `${durationHours}小時`
-                                     : durationMinutes > 0 ? `${durationMinutes}分鐘` : '未滿1分鐘';
-                        }
+                        duration = formatDuration(completedDate - createdDate);
+                        const net = netWorkMs(work);
+                        if (net !== null) netDuration = formatDuration(net);
                     }
 
                     data.push({
@@ -1472,7 +1491,8 @@
                         '接案時間': work.createdAt || '',
                         '開始時間': work.startedAt || '',
                         '完成時間': work.completedAt || '',
-                        '耗時(從開始進行起算)': duration,
+                        '總時長(開始→完成)': duration,
+                        '實際作業時間': netDuration,
                         '備註': work.note || '',
                         '主管留言': work.managerNote || '',
                         '進度記錄': (Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {})).map(p => `[${p.time}] ${p.text}`).join('\n'),
@@ -1500,7 +1520,8 @@
                 { wch: 18 },  // 接案時間
                 { wch: 18 },  // 開始時間
                 { wch: 18 },  // 完成時間
-                { wch: 18 },  // 耗時
+                { wch: 18 },  // 總時長
+                { wch: 15 },  // 實際作業時間
                 { wch: 30 },  // 備註
                 { wch: 30 },  // 主管留言
                 { wch: 40 },  // 進度記錄
@@ -1562,7 +1583,10 @@
             };
             if (flag) work.flag = flag;
             if (flag === '隊友協助' && helper) work.helper = helper;
-            if (work.status === '進行中') work.startedAt = work.createdAt;
+            if (work.status === '進行中') {
+                work.startedAt = work.createdAt;
+                work.workingSince = work.createdAt;
+            }
 
             appData.works[user].push(work);
 
@@ -1574,14 +1598,26 @@
             Object.keys(appData.works).forEach(user => {
                 const work = appData.works[user].find(w => w.id === workId);
                 if (work) {
+                    const now = new Date().toLocaleString('zh-TW');
                     work.status = newStatus;
-                    // 第一次切到進行中時記錄開始時間（計時從這裡起算）
-                    if (newStatus === '進行中' && !work.startedAt) {
-                        work.startedAt = new Date().toLocaleString('zh-TW');
+
+                    if (newStatus === '進行中') {
+                        // 第一次進行：記錄開始時間（總時長從這裡起算）
+                        if (!work.startedAt) work.startedAt = now;
+                        // 碼表啟動：記錄本段作業的起點
+                        if (!work.workingSince) work.workingSince = now;
+                    } else if (work.workingSince) {
+                        // 離開進行中：把這一段作業時間累加（碼表暫停）
+                        const seg = parseZhDate(work.workingSince) || new Date(work.workingSince);
+                        if (!isNaN(seg.getTime())) {
+                            work.accumMs = (work.accumMs || 0) + Math.max(0, Date.now() - seg.getTime());
+                        }
+                        delete work.workingSince;
                     }
+
                     // 記錄完成時間
                     if (newStatus === '完成') {
-                        work.completedAt = new Date().toLocaleString('zh-TW');
+                        work.completedAt = now;
                     } else {
                         // 如果改回進行中或等待中，清除完成時間
                         delete work.completedAt;
