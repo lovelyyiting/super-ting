@@ -1291,11 +1291,16 @@
                 const durationMs = completedDate - createdDate;
                 const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
                 const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+                const durationMinutes = Math.floor(durationMs / (1000 * 60));
 
                 if (durationDays > 0) {
                     durationText = `⏱️ ${durationDays}天${durationHours % 24}小時`;
                 } else if (durationHours > 0) {
                     durationText = `⏱️ ${durationHours}小時`;
+                } else if (durationMinutes > 0) {
+                    durationText = `⏱️ ${durationMinutes}分鐘`;
+                } else if (durationMinutes === 0 && work.completedAt) {
+                    durationText = '⏱️ 未滿1分鐘';
                 }
             }
 
@@ -1434,15 +1439,20 @@
             Object.keys(staffNames).forEach(user => {
                 const userWorks = works[user] || [];
                 userWorks.forEach(work => {
-                    const createdDate = work.createdAt ? new Date(work.createdAt) : null;
-                    const completedDate = work.completedAt ? new Date(work.completedAt) : null;
+                    const createdDate = work.createdAt ? (parseZhDate(work.createdAt) || new Date(work.createdAt)) : null;
+                    const completedDate = work.completedAt ? (parseZhDate(work.completedAt) || new Date(work.completedAt)) : null;
 
                     let duration = '';
                     if (createdDate && completedDate && work.status === '完成') {
                         const durationMs = completedDate - createdDate;
-                        const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
-                        const durationHours = Math.floor((durationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                        duration = durationDays > 0 ? `${durationDays}天${durationHours}小時` : `${durationHours}小時`;
+                        if (!isNaN(durationMs)) {
+                            const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+                            const durationHours = Math.floor((durationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                            const durationMinutes = Math.floor(durationMs / (1000 * 60));
+                            duration = durationDays > 0 ? `${durationDays}天${durationHours}小時`
+                                     : durationHours > 0 ? `${durationHours}小時`
+                                     : durationMinutes > 0 ? `${durationMinutes}分鐘` : '未滿1分鐘';
+                        }
                     }
 
                     data.push({
