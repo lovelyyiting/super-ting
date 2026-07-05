@@ -2042,43 +2042,77 @@
             }
         }
 
+        // 單則公告的顯示 HTML
+        function buildAnnouncementHtml(ann) {
+            const importanceEmoji = ann.importance === '緊急' ? '🚨' : ann.importance === '重要' ? '⚠️' : '📌';
+            const replyBtn = currentUser ? `<button class="work-btn" style="background: #667eea; color: white;" onclick="replyAnnouncement('${ann.id}')">回覆</button>` : '';
+            const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" onclick="deleteAnnouncement('${ann.id}')">刪除</button>` : '';
+            const notifyBadge = ann.notify ? ` <span style="background: #f0ad4e; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📣 提醒 ${displayNameOf(ann.notify)}</span>` : '';
+
+            let repliesHtml = '';
+            const replies = Array.isArray(ann.replies) ? ann.replies : Object.values(ann.replies || {});
+            replies.forEach((r, ridx) => {
+                if (r && r.text) {
+                    const replyNotify = r.notify ? ` <span style="background: #f0ad4e; color: white; padding: 1px 6px; border-radius: 8px; font-size: 11px; white-space: nowrap;">📣 ${displayNameOf(r.notify)}</span>` : '';
+                    const delReplyBtn = currentUser === 'christine' ? ` <button class="work-btn delete-btn" style="padding: 2px 8px; font-size: 11px;" onclick="deleteReply('${ann.id}', ${r.rid ? `'${r.rid}'` : ridx})">刪除</button>` : '';
+                    repliesHtml += `<div style="margin-left: 20px; margin-top: 6px; padding: 6px 10px; background: #f0f2ff; border-left: 3px solid #667eea; border-radius: 3px; font-size: 13px;">↳ <strong>${r.author}</strong>：${r.text}${replyNotify} <span style="color: #999; font-size: 11px;">${r.time || ''}</span>${delReplyBtn}</div>`;
+                }
+            });
+
+            return `<div class="announcement-item">
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span>${importanceEmoji} ${ann.importance}</span>
+                        <strong>${ann.text}</strong>${notifyBadge}
+                    </div>
+                    <div class="announcement-author">📝 ${ann.author}</div>
+                    <div class="announcement-time">${ann.time}</div>
+                    ${repliesHtml}
+                </div>
+                <div style="display: flex; gap: 5px; margin-left: auto;">${replyBtn}${deleteBtn}</div>
+            </div>`;
+        }
+
+        // 切換「較早的公告」收合
+        function toggleOlderAnnouncements() {
+            const key = 'announcements|older';
+            const cur = (key in collapsedSections) ? collapsedSections[key] : true;
+            collapsedSections[key] = !cur;
+            localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
+
+            const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                              document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+            loadAnnouncements(currentView);
+        }
+
         function loadAnnouncements(view) {
             let announcements = appData.announcements.slice();
 
-            // 按重要性排序（緊急 > 重要 > 普通）
-            announcements.sort((a, b) => (a.importanceOrder || 2) - (b.importanceOrder || 2));
+            // 最新在前；緊急公告永遠置頂
+            const ts = a => parseInt(a.id) || 0;
+            announcements.sort((a, b) => {
+                const ua = a.importance === '緊急' ? 1 : 0;
+                const ub = b.importance === '緊急' ? 1 : 0;
+                if (ua !== ub) return ub - ua;
+                return ts(b) - ts(a);
+            });
+
+            // 預設只顯示最新 5 則（含置頂的緊急），其餘收合
+            const VISIBLE_COUNT = 5;
+            const visible = announcements.slice(0, VISIBLE_COUNT);
+            const older = announcements.slice(VISIBLE_COUNT);
 
             let html = '';
+            visible.forEach(ann => { html += buildAnnouncementHtml(ann); });
 
-            announcements.forEach(ann => {
-                const importanceEmoji = ann.importance === '緊急' ? '🚨' : ann.importance === '重要' ? '⚠️' : '📌';
-                const replyBtn = currentUser ? `<button class="work-btn" style="background: #667eea; color: white;" onclick="replyAnnouncement('${ann.id}')">回覆</button>` : '';
-                const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" onclick="deleteAnnouncement('${ann.id}')">刪除</button>` : '';
-                const notifyBadge = ann.notify ? ` <span style="background: #f0ad4e; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📣 提醒 ${displayNameOf(ann.notify)}</span>` : '';
-
-                let repliesHtml = '';
-                const replies = Array.isArray(ann.replies) ? ann.replies : Object.values(ann.replies || {});
-                replies.forEach((r, ridx) => {
-                    if (r && r.text) {
-                        const replyNotify = r.notify ? ` <span style="background: #f0ad4e; color: white; padding: 1px 6px; border-radius: 8px; font-size: 11px; white-space: nowrap;">📣 ${displayNameOf(r.notify)}</span>` : '';
-                        const delReplyBtn = currentUser === 'christine' ? ` <button class="work-btn delete-btn" style="padding: 2px 8px; font-size: 11px;" onclick="deleteReply('${ann.id}', ${r.rid ? `'${r.rid}'` : ridx})">刪除</button>` : '';
-                        repliesHtml += `<div style="margin-left: 20px; margin-top: 6px; padding: 6px 10px; background: #f0f2ff; border-left: 3px solid #667eea; border-radius: 3px; font-size: 13px;">↳ <strong>${r.author}</strong>：${r.text}${replyNotify} <span style="color: #999; font-size: 11px;">${r.time || ''}</span>${delReplyBtn}</div>`;
-                    }
-                });
-
-                html += `<div class="announcement-item">
-                    <div style="flex: 1;">
-                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <span>${importanceEmoji} ${ann.importance}</span>
-                            <strong>${ann.text}</strong>${notifyBadge}
-                        </div>
-                        <div class="announcement-author">📝 ${ann.author}</div>
-                        <div class="announcement-time">${ann.time}</div>
-                        ${repliesHtml}
-                    </div>
-                    <div style="display: flex; gap: 5px; margin-left: auto;">${replyBtn}${deleteBtn}</div>
-                </div>`;
-            });
+            if (older.length > 0) {
+                const key = 'announcements|older';
+                const collapsed = (key in collapsedSections) ? collapsedSections[key] : true;
+                html += `<div style="cursor: pointer; user-select: none; color: #666; font-weight: bold; padding: 8px 0; border-top: 1px dashed #aaa; margin-top: 8px;" onclick="toggleOlderAnnouncements()">${collapsed ? '▶' : '▼'} 較早的公告 (${older.length})</div>`;
+                if (!collapsed) {
+                    older.forEach(ann => { html += buildAnnouncementHtml(ann); });
+                }
+            }
 
             const elementMap = {
                 'staff': 'staffAnnouncementList',
