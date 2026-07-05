@@ -579,6 +579,8 @@
                 </form>
             </div>
 
+            <input type="text" id="staffSearch" placeholder="🔍 搜尋工作（名稱、備註、留言、進度）" oninput="staffSearchQuery = this.value; renderStaffView(currentUser);" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
+
             <div id="staffWorkList"></div>
         </div>
 
@@ -628,6 +630,8 @@
                 <div id="assignBoard"></div>
             </div>
 
+            <input type="text" id="managerSearch" placeholder="🔍 搜尋所有人的工作（名稱、備註、留言、進度）" oninput="managerSearchQuery = this.value; renderDashboard('manager');" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
+
             <div class="dashboard-grid" id="dashboardGrid"></div>
 
             <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
@@ -653,7 +657,10 @@
             <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
                 <h3>📊 工作數據導出</h3>
                 <p style="color: #666; margin-bottom: 15px;">導出所有工作詳情，包含接案時間、完成時間、耗時等</p>
-                <button onclick="exportToExcel()" class="submit-btn">📥 導出 Excel</button>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button onclick="exportToExcel()" class="submit-btn">📥 導出 Excel</button>
+                    <button onclick="generateWeekReport()" class="submit-btn" style="background: #17a2b8;">📈 產生週報</button>
+                </div>
             </div>
 
             <div style="background: #fff3f3; padding: 20px; border-radius: 8px; margin-top: 30px; border: 1px solid #f5c6cb;">
@@ -701,6 +708,8 @@
                 </div>
             </div>
 
+            <input type="text" id="viewerSearch" placeholder="🔍 搜尋所有人的工作（名稱、備註、留言、進度）" oninput="viewerSearchQuery = this.value; renderDashboard('viewer');" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
+
             <div class="dashboard-grid" id="viewerDashboardGrid"></div>
         </div>
     </div>
@@ -722,6 +731,47 @@
         <div class="password-box">
             <h3>要提醒誰看這則回覆？</h3>
             <div id="notifyModalButtons" style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;"></div>
+        </div>
+    </div>
+
+    <!-- 週報視窗 -->
+    <div id="weekReportModal" class="password-modal">
+        <div class="password-box" style="text-align: left; max-width: 550px; width: 92%;">
+            <h3 style="text-align: center;">📈 本週工作摘要</h3>
+            <div id="weekReportContent" style="white-space: pre-wrap; font-size: 13px; line-height: 1.7; background: #f9f9f9; border: 1px solid #ddd; border-radius: 5px; padding: 12px; margin-top: 15px; max-height: 55vh; overflow-y: auto;"></div>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button class="submit-btn" style="flex: 1; margin: 0;" onclick="copyWeekReport()">📋 複製</button>
+                <button class="cancel-btn" style="flex: 1; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="document.getElementById('weekReportModal').classList.remove('active')">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通用輸入視窗（進度/留言/回覆） -->
+    <div id="inputModal" class="password-modal">
+        <div class="password-box" style="text-align: left;">
+            <h3 id="inputModalTitle" style="text-align: center;"></h3>
+            <textarea id="inputModalText" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; min-height: 90px; margin-top: 15px; font-size: 14px; font-family: inherit;"></textarea>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button class="submit-btn" style="flex: 1; margin: 0;" onclick="confirmInputModal()">確認</button>
+                <button class="cancel-btn" style="flex: 1; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="closeInputModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 編輯工作視窗 -->
+    <div id="editWorkModal" class="password-modal">
+        <div class="password-box" style="text-align: left;">
+            <h3 style="text-align: center;">✏️ 編輯工作</h3>
+            <div style="margin-top: 15px;">
+                <label style="font-weight: bold; display: block; margin-bottom: 5px;">工作名稱 *</label>
+                <input type="text" id="editWorkTitle" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 12px;">
+                <label style="font-weight: bold; display: block; margin-bottom: 5px;">備註</label>
+                <textarea id="editWorkNote" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; min-height: 70px; margin-bottom: 15px; font-family: inherit;"></textarea>
+                <div style="display: flex; gap: 10px;">
+                    <button class="submit-btn" style="flex: 1; margin: 0;" onclick="confirmEditWork()">儲存</button>
+                    <button class="cancel-btn" style="flex: 1; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="closeEditWorkModal()">取消</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -768,11 +818,71 @@
         // 資料結構
         let currentUser = null;
         let pendingUser = null;
-        const USER_PASSWORDS = {
-            christine: 'GA4331',
-            xiaole: '12345',
-            stella: '0703'
+        // 密碼只存 SHA-256 指紋，原始碼中看不到明文
+        const USER_PASSWORD_HASHES = {
+            christine: 'e47cf9ebde21c6a1954ff030e6b84ef2c79ee210142002ed5ed1fb8490b8eb4f',
+            xiaole: '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5',
+            stella: 'db644b9eda4129ff87717797efb283a1fbbfd2083f7974af509385c30ad15861'
         };
+
+        // SHA-256（純 JS 實作，輸入 ASCII 字串回傳十六進位指紋）
+        function sha256Hex(ascii) {
+            function rightRotate(value, amount) { return (value >>> amount) | (value << (32 - amount)); }
+            var mathPow = Math.pow, maxWord = mathPow(2, 32);
+            var result = '';
+            var words = [], asciiBitLength = ascii.length * 8;
+            var hash = sha256Hex.h = sha256Hex.h || [];
+            var k = sha256Hex.k = sha256Hex.k || [];
+            var primeCounter = k.length;
+            var isComposite = {};
+            for (var candidate = 2; primeCounter < 64; candidate++) {
+                if (!isComposite[candidate]) {
+                    for (var i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+                    hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+                    k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+                }
+            }
+            ascii += '\x80';
+            while (ascii.length % 64 - 56) ascii += '\x00';
+            for (i = 0; i < ascii.length; i++) {
+                var j = ascii.charCodeAt(i);
+                if (j >> 8) return '';
+                words[i >> 2] |= j << ((3 - i) % 4) * 8;
+            }
+            words[words.length] = ((asciiBitLength / maxWord) | 0);
+            words[words.length] = (asciiBitLength);
+            for (j = 0; j < words.length;) {
+                var w = words.slice(j, j += 16);
+                var oldHash = hash;
+                hash = hash.slice(0, 8);
+                for (i = 0; i < 64; i++) {
+                    var w15 = w[i - 15], w2 = w[i - 2];
+                    var a = hash[0], e = hash[4];
+                    var temp1 = hash[7]
+                        + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+                        + ((e & hash[5]) ^ ((~e) & hash[6]))
+                        + k[i]
+                        + (w[i] = (i < 16) ? w[i] : (
+                            w[i - 16]
+                            + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+                            + w[i - 7]
+                            + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+                        ) | 0);
+                    var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+                        + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+                    hash = [(temp1 + temp2) | 0].concat(hash);
+                    hash[4] = (hash[4] + temp1) | 0;
+                }
+                for (i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+            }
+            for (i = 0; i < 8; i++) {
+                for (j = 3; j + 1; j--) {
+                    var b = (hash[i] >> (j * 8)) & 255;
+                    result += ((b < 16) ? 0 : '') + b.toString(16);
+                }
+            }
+            return result;
+        }
         const staffNames = {
             stella: 'Stella',
             xiaole: '小樂',
@@ -832,6 +942,34 @@
 
             // 監聽連線狀態
             db.ref('.info/connected').on('value', snap => setSyncStatus(snap.val() === true));
+
+            // 每日自動備份：當天第一台開啟的裝置把全部資料存一份快照，保留最近 14 天
+            db.ref('backups/lastDate').once('value').then(snap => {
+                const today = new Date().toISOString().slice(0, 10);
+                if (snap.val() === today) return;
+                db.ref('backups/lastDate').set(today);
+
+                Promise.all([
+                    db.ref('works').once('value'),
+                    db.ref('announcements').once('value'),
+                    db.ref('shipments').once('value'),
+                    db.ref('customStaffNames').once('value')
+                ]).then(snaps => {
+                    db.ref('backups/daily/' + today).set({
+                        works: snaps[0].val() || null,
+                        announcements: snaps[1].val() || null,
+                        shipments: snaps[2].val() || null,
+                        customStaffNames: snaps[3].val() || null,
+                        savedAt: new Date().toLocaleString('zh-TW')
+                    });
+                    // 清掉 14 天前的舊備份
+                    db.ref('backups/daily').once('value').then(s2 => {
+                        Object.keys(s2.val() || {}).sort().slice(0, -14).forEach(k => {
+                            db.ref('backups/daily/' + k).remove();
+                        });
+                    });
+                }).catch(e => console.log('備份失敗', e));
+            }).catch(e => console.log('備份檢查失敗', e));
 
             // 資料搬家：把這台裝置的本機資料「合併」上傳到雲端
             // （只補上雲端沒有的項目，不會覆蓋其他裝置已上傳的資料）
@@ -1071,7 +1209,7 @@
 
         // 選擇身份
         function selectIdentity(identity) {
-            if (USER_PASSWORDS[identity]) {
+            if (USER_PASSWORD_HASHES[identity]) {
                 pendingUser = identity;
                 const displayName = identity === 'christine' ? 'Christine 主管模式' : staffNames[identity];
                 document.querySelector('#passwordModal h3').textContent = `${displayName} 需要密碼`;
@@ -1084,10 +1222,10 @@
             }
         }
 
-        // 檢查密碼
+        // 檢查密碼（比對 SHA-256 指紋）
         function checkPassword() {
             const password = document.getElementById('passwordInput').value;
-            if (pendingUser && password === USER_PASSWORDS[pendingUser]) {
+            if (pendingUser && sha256Hex(password) === USER_PASSWORD_HASHES[pendingUser]) {
                 currentUser = pendingUser;
                 pendingUser = null;
                 document.getElementById('passwordModal').classList.remove('active');
@@ -1188,6 +1326,22 @@
             }
         }
 
+        // 搜尋關鍵字（各畫面獨立）
+        let staffSearchQuery = '';
+        let managerSearchQuery = '';
+        let viewerSearchQuery = '';
+
+        // 工作是否符合搜尋關鍵字（比對名稱、備註、主管留言、進度內容）
+        function workMatches(w, q) {
+            if (!q || !q.trim()) return true;
+            q = q.trim().toLowerCase();
+            const parts = [w.title, w.note, w.managerNote];
+            (Array.isArray(w.progress) ? w.progress : Object.values(w.progress || {})).forEach(p => {
+                if (p && p.text) parts.push(p.text);
+            });
+            return parts.some(s => s && String(s).toLowerCase().indexOf(q) >= 0);
+        }
+
         // 判斷時間字串是否為今天
         function isToday(s) {
             const d = parseZhDate(s);
@@ -1227,9 +1381,10 @@
                     .join('');
             }
 
-            const works = getWorks(user);
+            const works = getWorks(user).filter(w => workMatches(w, staffSearchQuery));
             const html = renderWorksByStatus(works, user, true);
-            document.getElementById('staffWorkList').innerHTML = todaySummaryHtml(user) + html;
+            const emptySearch = (staffSearchQuery.trim() && works.length === 0) ? '<p style="color: #999;">沒有符合搜尋的工作</p>' : '';
+            document.getElementById('staffWorkList').innerHTML = todaySummaryHtml(user) + emptySearch + html;
             loadAnnouncements('staff');
             loadShipments('staff');
             renderAlerts('staff', user);
@@ -1256,8 +1411,11 @@
             const statuses = ['進行中', '等待中', '完成'];
             let html = '';
 
+            const prioOrder = { '高': 0, '中': 1, '低': 2 };
             statuses.forEach(status => {
-                const statusWorks = works.filter(w => w.status === status);
+                const statusWorks = works.filter(w => w.status === status)
+                    .slice()
+                    .sort((a, b) => (prioOrder[a.priority] !== undefined ? prioOrder[a.priority] : 1) - (prioOrder[b.priority] !== undefined ? prioOrder[b.priority] : 1));
                 if (statusWorks.length === 0) return;
 
                 const collapsed = isSectionCollapsed(owner, status);
@@ -1309,6 +1467,14 @@
                 if (!isNaN(d.getTime())) ms += Math.max(0, Date.now() - d.getTime());
             }
             return ms;
+        }
+
+        // 進度記錄展開狀態（每次載入頁面重設，預設只顯示最新一筆）
+        let expandedProgress = {};
+
+        function toggleProgress(workId) {
+            expandedProgress[workId] = !expandedProgress[workId];
+            rerenderCurrentView();
         }
 
         // 時間標籤：等待中顯示「已接案」（灰色參考資訊，不計工時）；進行中顯示「已進行」（實際累計，越久顏色越深）
@@ -1377,10 +1543,17 @@
 
             if (work.managerNote) html += `<div class="work-note" style="background: #fff8e1; border-left: 3px solid #f0ad4e; padding: 4px 8px; margin-top: 4px; border-radius: 3px;">👑 Christine 留言：${work.managerNote}</div>`;
 
-            const progressList = Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {});
-            progressList.forEach(p => {
-                if (p && p.text) html += `<div class="work-note" style="background: #eef7ee; border-left: 3px solid #28a745; padding: 4px 8px; margin-top: 4px; border-radius: 3px;">🔄 ${p.time || ''}｜${p.text}</div>`;
-            });
+            const progressList = (Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {})).filter(p => p && p.text);
+            if (progressList.length > 0) {
+                const showAll = !!expandedProgress[work.id];
+                const shown = showAll ? progressList : [progressList[progressList.length - 1]];
+                shown.forEach(p => {
+                    html += `<div class="work-note" style="background: #eef7ee; border-left: 3px solid #28a745; padding: 4px 8px; margin-top: 4px; border-radius: 3px;">🔄 ${p.time || ''}｜${p.text}</div>`;
+                });
+                if (progressList.length > 1) {
+                    html += `<div style="font-size: 12px; color: #667eea; cursor: pointer; user-select: none; margin-top: 4px;" onclick="toggleProgress('${work.id}')">${showAll ? '▲ 收合進度' : `▼ 顯示全部進度 (${progressList.length})`}</div>`;
+                }
+            }
 
             // 顯示時間信息
             let timeInfo = '';
@@ -1452,17 +1625,15 @@
 
             if (!target) return;
 
-            const input = prompt('主管留言（清空內容並確認 = 刪除留言）:', target.managerNote || '');
-            if (input === null) return; // 按取消
-
-            if (input.trim()) {
-                target.managerNote = input.trim();
-            } else {
-                delete target.managerNote;
-            }
-
-            saveWorks();
-            rerenderCurrentView();
+            openInputModal('👑 主管留言（清空內容並確認 = 刪除留言）', target.managerNote || '', function(input) {
+                if (input.trim()) {
+                    target.managerNote = input.trim();
+                } else {
+                    delete target.managerNote;
+                }
+                saveWorks();
+                rerenderCurrentView();
+            });
         }
 
         // 取得工作列表
@@ -1571,6 +1742,63 @@
             XLSX.writeFile(workbook, fileName);
         }
 
+        // 主管專用：一鍵產生本週工作摘要
+        function generateWeekReport() {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以產生週報');
+                return;
+            }
+
+            const now = new Date();
+            const monday = new Date(now);
+            monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+            monday.setHours(0, 0, 0, 0);
+
+            const fmt = d => `${d.getMonth() + 1}/${d.getDate()}`;
+            const lines = [`📈 生管週報（${fmt(monday)} ～ ${fmt(now)}）`, ''];
+
+            Object.keys(staffNames).forEach(user => {
+                const list = appData.works[user] || [];
+                const doneWeek = list.filter(w => {
+                    if (w.status !== '完成') return false;
+                    const d = parseZhDate(w.completedAt);
+                    return d && d >= monday;
+                });
+                const doing = list.filter(w => w.status === '進行中');
+                const waiting = list.filter(w => w.status === '等待中');
+
+                let netTotal = 0, netCount = 0;
+                doneWeek.forEach(w => {
+                    const n = netWorkMs(w);
+                    if (n !== null) { netTotal += n; netCount++; }
+                });
+
+                const overdue = doing.filter(w => {
+                    const d = parseZhDate(w.startedAt || w.createdAt);
+                    return d && (now - d) >= 7 * 86400000;
+                });
+
+                lines.push(`■ ${staffNames[user]}`);
+                lines.push(`　本週完成 ${doneWeek.length} 件｜在手 ${doing.length + waiting.length} 件（進行 ${doing.length}・等待 ${waiting.length}）`);
+                if (netCount > 0) lines.push(`　實際作業時間合計 ${formatDuration(netTotal)}（${netCount} 件有記錄）`);
+                if (overdue.length > 0) lines.push(`　🚨 進行超過 7 天：${overdue.map(w => w.title).join('、')}`);
+                doneWeek.forEach(w => lines.push(`　✅ ${w.title}`));
+                lines.push('');
+            });
+
+            document.getElementById('weekReportContent').textContent = lines.join('\n');
+            document.getElementById('weekReportModal').classList.add('active');
+        }
+
+        function copyWeekReport() {
+            const text = document.getElementById('weekReportContent').textContent;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => alert('✅ 已複製，可直接貼到郵件或群組'));
+            } else {
+                alert('此瀏覽器不支援自動複製，請手動選取文字');
+            }
+        }
+
         // 主管專用：備份並清除所有已完成工作
         function clearCompletedWorks() {
             if (currentUser !== 'christine') {
@@ -1675,36 +1903,80 @@
             }
         }
 
+        // 通用輸入視窗
+        let inputModalCb = null;
+
+        function openInputModal(title, defaultValue, cb) {
+            inputModalCb = cb;
+            document.getElementById('inputModalTitle').textContent = title;
+            document.getElementById('inputModalText').value = defaultValue || '';
+            document.getElementById('inputModal').classList.add('active');
+            document.getElementById('inputModalText').focus();
+        }
+
+        function closeInputModal() {
+            inputModalCb = null;
+            document.getElementById('inputModal').classList.remove('active');
+        }
+
+        function confirmInputModal() {
+            const cb = inputModalCb;
+            const val = document.getElementById('inputModalText').value;
+            inputModalCb = null;
+            document.getElementById('inputModal').classList.remove('active');
+            if (cb) cb(val);
+        }
+
         // 更新進度：在工作上追加一筆進度記錄
         function addProgress(workId) {
             const work = (appData.works[currentUser] || []).find(w => w.id === workId);
             if (!work) return;
 
-            const text = prompt('更新進度（例如：已聯絡供應商，等回覆）:');
-            if (text === null || !text.trim()) return;
-
-            if (!Array.isArray(work.progress)) work.progress = Object.values(work.progress || {});
-            work.progress.push({
-                text: text.trim(),
-                time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+            openInputModal('🔄 更新進度', '', function(text) {
+                if (!text.trim()) return;
+                if (!Array.isArray(work.progress)) work.progress = Object.values(work.progress || {});
+                work.progress.push({
+                    text: text.trim(),
+                    time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                });
+                saveWorks();
+                renderStaffView(currentUser);
             });
-
-            saveWorks();
-            renderStaffView(currentUser);
         }
 
-        // 編輯工作 (簡化版)
+        // 編輯工作（正式視窗）
+        let editingWorkId = null;
+
         function editWork(workId) {
             const work = (appData.works[currentUser] || []).find(w => w.id === workId);
-            if (work) {
-                const newTitle = prompt('工作名稱:', work.title);
-                if (newTitle) {
-                    work.title = newTitle;
-                    work.note = prompt('備註:', work.note);
-                    saveWorks();
-                    renderStaffView(currentUser);
-                }
+            if (!work) return;
+
+            editingWorkId = workId;
+            document.getElementById('editWorkTitle').value = work.title || '';
+            document.getElementById('editWorkNote').value = work.note || '';
+            document.getElementById('editWorkModal').classList.add('active');
+        }
+
+        function closeEditWorkModal() {
+            editingWorkId = null;
+            document.getElementById('editWorkModal').classList.remove('active');
+        }
+
+        function confirmEditWork() {
+            const work = (appData.works[currentUser] || []).find(w => w.id === editingWorkId);
+            if (!work) { closeEditWorkModal(); return; }
+
+            const title = document.getElementById('editWorkTitle').value;
+            if (!title.trim()) {
+                alert('工作名稱不能空白');
+                return;
             }
+
+            work.title = title.trim();
+            work.note = document.getElementById('editWorkNote').value.trim();
+            closeEditWorkModal();
+            saveWorks();
+            renderStaffView(currentUser);
         }
 
         // 戰情室
@@ -1712,8 +1984,9 @@
             const works = appData.works;
             let html = '';
 
+            const dashQuery = view === 'manager' ? managerSearchQuery : viewerSearchQuery;
             Object.keys(staffNames).forEach(user => {
-                const userWorks = works[user] || [];
+                const userWorks = (works[user] || []).filter(w => workMatches(w, dashQuery));
                 const doing = userWorks.filter(w => w.status === '進行中').length;
                 const waiting = userWorks.filter(w => w.status === '等待中').length;
                 const done = userWorks.filter(w => w.status === '完成').length;
@@ -1923,10 +2196,15 @@
             const ann = appData.announcements.find(a => a.id === annId);
             if (!ann) return;
 
-            const text = prompt('回覆這則公告:');
-            if (text === null || !text.trim()) return;
+            openInputModal('💬 回覆公告：' + ann.text.substring(0, 20), '', function(text) {
+                if (!text.trim()) return;
+                showReplyNotifyPicker(annId, text.trim());
+            });
+        }
 
-            pendingReply = { annId: annId, text: text.trim() };
+        // 回覆輸入完成後，跳出選人視窗
+        function showReplyNotifyPicker(annId, text) {
+            pendingReply = { annId: annId, text: text };
 
             const keys = ['christine', 'stella', 'xiaole', 'lingjia', 'penny'].filter(k => k !== currentUser);
             let btns = keys.map(k => `<button class="submit-btn" style="width: 100%; margin: 0;" onclick="finishReply('${k}')">📣 ${displayNameOf(k)}</button>`).join('');
