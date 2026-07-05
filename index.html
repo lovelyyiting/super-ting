@@ -1188,6 +1188,32 @@
             }
         }
 
+        // 判斷時間字串是否為今天
+        function isToday(s) {
+            const d = parseZhDate(s);
+            if (!d) return false;
+            const t = new Date();
+            return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
+        }
+
+        // 今日案量統計：今天完成的 + 進行中 + 等待中（含之前遺留，自動累加到今天）
+        function todayStats(user) {
+            const list = appData.works[user] || [];
+            const doing = list.filter(w => w.status === '進行中').length;
+            const waiting = list.filter(w => w.status === '等待中').length;
+            const doneToday = list.filter(w => w.status === '完成' && isToday(w.completedAt)).length;
+            return { doing: doing, waiting: waiting, doneToday: doneToday, total: doing + waiting + doneToday };
+        }
+
+        // 今日案量摘要卡 HTML
+        function todaySummaryHtml(user) {
+            const s = todayStats(user);
+            return `<div style="background: #eef5ff; border: 1px solid #7fb3ff; border-radius: 8px; padding: 10px 15px; margin-bottom: 15px; font-size: 14px;">
+                📅 <strong>今日案量 ${s.total} 件</strong>
+                <span style="color: #555;">｜✅ 今日完成 ${s.doneToday}・🔨 進行中 ${s.doing}・📥 等待中 ${s.waiting}</span>
+            </div>`;
+        }
+
         // 渲染生管視圖
         function renderStaffView(user) {
             document.querySelector('#staffView .view-header h2').textContent = `📋 ${staffNames[user]} 的工作清單`;
@@ -1203,7 +1229,7 @@
 
             const works = getWorks(user);
             const html = renderWorksByStatus(works, user, true);
-            document.getElementById('staffWorkList').innerHTML = html;
+            document.getElementById('staffWorkList').innerHTML = todaySummaryHtml(user) + html;
             loadAnnouncements('staff');
             loadShipments('staff');
             renderAlerts('staff', user);
@@ -1699,6 +1725,7 @@
                         <div class="stat"><div class="stat-label">等待中</div><div class="stat-value">${waiting}</div></div>
                         <div class="stat"><div class="stat-label">完成</div><div class="stat-value">${done}</div></div>
                     </div>
+                    ${todaySummaryHtml(user)}
                     <div>${renderWorksByStatus(userWorks, user, false)}</div>
                 </div>`;
             });
