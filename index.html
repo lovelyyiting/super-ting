@@ -1262,18 +1262,20 @@
             return d;
         }
 
-        // 接案至今的天數標籤（未完成的工作才顯示，越久顏色越深）
+        // 進行天數標籤（只有進行中的工作顯示，從開始進行起算，越久顏色越深）
         function pendingBadge(work) {
-            if (work.status === '完成' || !work.createdAt) return '';
-            const created = parseZhDate(work.createdAt);
-            if (!created) return '';
+            if (work.status !== '進行中') return '';
+            const base = work.startedAt || work.createdAt;
+            if (!base) return '';
+            const started = parseZhDate(base);
+            if (!started) return '';
 
-            const ms = new Date() - created;
+            const ms = new Date() - started;
             const days = Math.floor(ms / 86400000);
             const hours = Math.floor(ms / 3600000);
             if (ms < 0) return '';
 
-            const text = days >= 1 ? `已接案 ${days} 天` : `已接案 ${hours} 小時`;
+            const text = days >= 1 ? `已進行 ${days} 天` : `已進行 ${hours} 小時`;
             const color = days >= 7 ? '#dc3545' : days >= 3 ? '#fd7e14' : '#6c757d';
             return ` <span style="background: ${color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📌 ${text}</span>`;
         }
@@ -1283,10 +1285,11 @@
             const statusClass = `status-${work.status === '進行中' ? 'doing' : work.status === '等待中' ? 'waiting' : 'done'}`;
             const statusMap = { '進行中': 'doing', '等待中': 'waiting', '完成': 'done' };
 
-            // 計算耗時
+            // 計算耗時（從「開始進行」起算，等待中不計時）
             let durationText = '';
-            if (work.createdAt) {
-                const createdDate = parseZhDate(work.createdAt) || new Date(work.createdAt);
+            const durationBase = work.startedAt || work.createdAt;
+            if (durationBase && (work.status === '完成' || work.status === '進行中')) {
+                const createdDate = parseZhDate(durationBase) || new Date(durationBase);
                 const completedDate = work.completedAt ? (parseZhDate(work.completedAt) || new Date(work.completedAt)) : new Date();
                 const durationMs = completedDate - createdDate;
                 const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
@@ -1323,6 +1326,11 @@
                 const cd = parseZhDate(work.createdAt);
                 const createdTime = cd ? cd.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : work.createdAt;
                 timeInfo += `📅 接案日期: ${createdTime}`;
+            }
+            if (work.startedAt) {
+                const sd = parseZhDate(work.startedAt);
+                const startedTime = sd ? sd.toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : work.startedAt;
+                timeInfo += ` | 開始: ${startedTime}`;
             }
             if (work.completedAt) {
                 const fd = parseZhDate(work.completedAt);
@@ -1439,7 +1447,8 @@
             Object.keys(staffNames).forEach(user => {
                 const userWorks = works[user] || [];
                 userWorks.forEach(work => {
-                    const createdDate = work.createdAt ? (parseZhDate(work.createdAt) || new Date(work.createdAt)) : null;
+                    const durationBase = work.startedAt || work.createdAt;
+                    const createdDate = durationBase ? (parseZhDate(durationBase) || new Date(durationBase)) : null;
                     const completedDate = work.completedAt ? (parseZhDate(work.completedAt) || new Date(work.completedAt)) : null;
 
                     let duration = '';
@@ -1461,8 +1470,9 @@
                         '優先度': work.priority || '中',
                         '狀態': work.status,
                         '接案時間': work.createdAt || '',
+                        '開始時間': work.startedAt || '',
                         '完成時間': work.completedAt || '',
-                        '耗時': duration,
+                        '耗時(從開始進行起算)': duration,
                         '備註': work.note || '',
                         '主管留言': work.managerNote || '',
                         '進度記錄': (Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {})).map(p => `[${p.time}] ${p.text}`).join('\n'),
@@ -1488,8 +1498,9 @@
                 { wch: 8 },   // 優先度
                 { wch: 8 },   // 狀態
                 { wch: 18 },  // 接案時間
+                { wch: 18 },  // 開始時間
                 { wch: 18 },  // 完成時間
-                { wch: 12 },  // 耗時
+                { wch: 18 },  // 耗時
                 { wch: 30 },  // 備註
                 { wch: 30 },  // 主管留言
                 { wch: 40 },  // 進度記錄
@@ -1551,6 +1562,7 @@
             };
             if (flag) work.flag = flag;
             if (flag === '隊友協助' && helper) work.helper = helper;
+            if (work.status === '進行中') work.startedAt = work.createdAt;
 
             appData.works[user].push(work);
 
@@ -1563,6 +1575,10 @@
                 const work = appData.works[user].find(w => w.id === workId);
                 if (work) {
                     work.status = newStatus;
+                    // 第一次切到進行中時記錄開始時間（計時從這裡起算）
+                    if (newStatus === '進行中' && !work.startedAt) {
+                        work.startedAt = new Date().toLocaleString('zh-TW');
+                    }
                     // 記錄完成時間
                     if (newStatus === '完成') {
                         work.completedAt = new Date().toLocaleString('zh-TW');
