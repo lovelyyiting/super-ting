@@ -1285,8 +1285,20 @@
             return ms;
         }
 
-        // 進行天數標籤（只有進行中的工作顯示，用實際作業時間，越久顏色越深）
+        // 時間標籤：等待中顯示「已接案」（灰色參考資訊，不計工時）；進行中顯示「已進行」（實際累計，越久顏色越深）
         function pendingBadge(work) {
+            if (work.status === '等待中') {
+                if (!work.createdAt) return '';
+                const created = parseZhDate(work.createdAt);
+                if (!created) return '';
+                const ms = new Date() - created;
+                if (isNaN(ms) || ms < 0) return '';
+                const days = Math.floor(ms / 86400000);
+                const hours = Math.floor(ms / 3600000);
+                const text = days >= 1 ? `已接案 ${days} 天` : `已接案 ${hours} 小時`;
+                return ` <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📥 ${text}</span>`;
+            }
+
             if (work.status !== '進行中') return '';
 
             let ms = netWorkMs(work);
