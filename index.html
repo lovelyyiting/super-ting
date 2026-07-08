@@ -644,22 +644,12 @@
 
             <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
                 <h3>⚙️ 人員管理</h3>
-                <p style="color: #666; margin-bottom: 15px;">修改生管名字</p>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
-                    <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">生管 1</label>
-                        <input type="text" id="staffName1" placeholder="Stella" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
-                    </div>
-                    <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">生管 2</label>
-                        <input type="text" id="staffName2" placeholder="小樂" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
-                    </div>
-                    <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 5px;">生管 3</label>
-                        <input type="text" id="staffName3" placeholder="伶佳" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
-                    </div>
+                <p style="color: #666; margin-bottom: 15px;">修改名字與密碼、停用離職人員、新增新進人員（所有裝置同步生效）</p>
+                <div id="staffManageList" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px;"></div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button onclick="addStaffMember()" class="submit-btn" style="margin-top: 0; background: #17a2b8;">➕ 新增人員</button>
+                    <button onclick="saveStaffNames()" class="submit-btn" style="margin-top: 0;">💾 保存名字</button>
                 </div>
-                <button onclick="saveStaffNames()" class="submit-btn" style="margin-bottom: 20px;">💾 保存名字</button>
             </div>
 
             <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
@@ -902,8 +892,33 @@
             works: {},
             announcements: [],
             shipments: [],
-            customStaffNames: {}
+            customStaffNames: {},
+            // 人員設定：密碼覆蓋、停用名單、新增人員（皆為選填，雲端同步）
+            staffSettings: { passwordHashes: {}, disabled: {}, extraStaff: {} }
         };
+
+        function normalizeStaffSettings(v) {
+            v = v || {};
+            return {
+                passwordHashes: v.passwordHashes || {},
+                disabled: v.disabled || {},
+                extraStaff: v.extraStaff || {}
+            };
+        }
+
+        // 取得某身份目前生效的密碼指紋（主管設定優先，否則用內建）
+        function getPasswordHash(key) {
+            return (appData.staffSettings.passwordHashes || {})[key] || USER_PASSWORD_HASHES[key] || null;
+        }
+
+        function isStaffDisabled(key) {
+            return !!(appData.staffSettings.disabled || {})[key];
+        }
+
+        // 所有生管 key（內建三位＋主管新增的）
+        function allStaffKeys() {
+            return ['stella', 'xiaole', 'lingjia'].concat(Object.keys(appData.staffSettings.extraStaff || {}));
+        }
 
         // 右上角同步狀態指示燈
         function setSyncStatus(connected) {
@@ -941,6 +956,7 @@
             appData.announcements = JSON.parse(localStorage.getItem('announcements') || '[]');
             appData.shipments = JSON.parse(localStorage.getItem('shipments') || '[]');
             appData.customStaffNames = JSON.parse(localStorage.getItem('customStaffNames') || '{}');
+            appData.staffSettings = normalizeStaffSettings(JSON.parse(localStorage.getItem('staffSettings') || 'null'));
             loadStaffNames();
 
             if (!db) {
@@ -1046,6 +1062,18 @@
                 loadStaffNames();
                 rerenderCurrentView();
             });
+            db.ref('staffSettings').on('value', snap => {
+                appData.staffSettings = normalizeStaffSettings(snap.val());
+                localStorage.setItem('staffSettings', JSON.stringify(appData.staffSettings));
+                loadStaffNames();
+                rerenderCurrentView();
+            });
+        }
+
+        // 儲存人員設定（本機 + 雲端）
+        function saveStaffSettings() {
+            localStorage.setItem('staffSettings', JSON.stringify(appData.staffSettings));
+            if (db) db.ref('staffSettings').set(appData.staffSettings).catch(e => console.log('雲端儲存失敗', e));
         }
 
         // 儲存工作資料（本機 + 雲端）
@@ -1082,31 +1110,50 @@
             }
         }
 
-        // 讀取自定義人員名字
+        // 讀取自定義人員名字（內建三位＋主管新增的人員）
         function loadStaffNames() {
             const defaults = { stella: 'Stella', xiaole: '小樂', lingjia: '伶佳' };
-            Object.keys(defaults).forEach(key => {
-                staffNames[key] = appData.customStaffNames[key] || defaults[key];
 
-                // 同步更新主畫面的身份按鈕名字
-                const btn = document.getElementById('identityBtn-' + key);
-                if (btn) btn.textContent = `👩‍💼 ${staffNames[key]}`;
+            // 先清掉已被移除的新增人員
+            Object.keys(staffNames).forEach(key => {
+                if (!(key in defaults) && !(key in (appData.staffSettings.extraStaff || {}))) delete staffNames[key];
             });
 
-            // 如果在主管視圖，更新輸入框
-            if (currentUser === 'christine') {
-                document.getElementById('staffName1').value = staffNames['stella'];
-                document.getElementById('staffName2').value = staffNames['xiaole'];
-                document.getElementById('staffName3').value = staffNames['lingjia'];
-            }
+            Object.keys(defaults).forEach(key => {
+                staffNames[key] = appData.customStaffNames[key] || defaults[key];
+            });
+            Object.keys(appData.staffSettings.extraStaff || {}).forEach(key => {
+                staffNames[key] = appData.staffSettings.extraStaff[key];
+            });
 
-            // 更新「指派給」選單
+            renderIdentityButtons();
+
+            // 如果在主管視圖，更新人員管理面板
+            if (currentUser === 'christine') renderStaffManagement();
+
+            // 更新「指派給」選單（停用人員不列入）
             const assignSel = document.getElementById('assignTarget');
             if (assignSel) {
                 const cur = assignSel.value;
-                assignSel.innerHTML = Object.keys(staffNames).map(k => `<option value="${k}">${staffNames[k]}</option>`).join('');
+                assignSel.innerHTML = Object.keys(staffNames)
+                    .filter(k => !isStaffDisabled(k))
+                    .map(k => `<option value="${k}">${staffNames[k]}</option>`).join('');
                 if (cur) assignSel.value = cur;
             }
+        }
+
+        // 重建登入畫面的身份按鈕（停用人員不顯示）
+        function renderIdentityButtons() {
+            const box = document.querySelector('#identityView .identity-buttons');
+            if (!box) return;
+            let html = '';
+            allStaffKeys().forEach(key => {
+                if (isStaffDisabled(key)) return;
+                html += `<button class="identity-btn staff" id="identityBtn-${key}" onclick="selectIdentity('${key}')">👩‍💼 ${staffNames[key] || key}</button>`;
+            });
+            html += `<button class="identity-btn manager" onclick="selectIdentity('christine')">👔 Christine</button>`;
+            html += `<button class="identity-btn viewer" onclick="selectIdentity('penny')">👑 Penny</button>`;
+            box.innerHTML = html;
         }
 
         // 開啟指派工作視窗（僅主管）
@@ -1189,37 +1236,172 @@
             markAssignRead(workId);
         }
 
-        // 保存自定義人員名字
-        function saveStaffNames() {
-            const name1 = document.getElementById('staffName1').value.trim();
-            const name2 = document.getElementById('staffName2').value.trim();
-            const name3 = document.getElementById('staffName3').value.trim();
+        // 主管的人員管理面板（每人一列：名字、改密碼、停用/啟用）
+        function renderStaffManagement() {
+            const box = document.getElementById('staffManageList');
+            if (!box) return;
 
-            if (!name1 || !name2 || !name3) {
-                alert('請填入所有生管名字');
-                return;
+            const rowStyle = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: white; padding: 10px 12px; border-radius: 6px;';
+            const btnStyle = 'padding: 6px 12px; border: none; border-radius: 5px; cursor: pointer; font-size: 13px; white-space: nowrap;';
+            let html = '';
+
+            // 主管與 Penny：只能改密碼（名字固定、不可停用）
+            [['christine', '👔 Christine（主管）'], ['penny', '👑 Penny（查看）']].forEach(([key, label]) => {
+                const hasCustomPw = !!(appData.staffSettings.passwordHashes || {})[key];
+                html += `<div style="${rowStyle}">
+                    <span style="font-weight: bold; min-width: 160px;">${label}</span>
+                    <span style="color: #999; font-size: 12px;">${getPasswordHash(key) ? (hasCustomPw ? '🔑 已設自訂密碼' : '🔑 使用預設密碼') : '未設密碼'}</span>
+                    <button style="${btnStyle} background: #7a8663; color: white; margin-left: auto;" onclick="setStaffPassword('${key}')">🔑 修改密碼</button>
+                </div>`;
+            });
+
+            // 生管人員：名字可改、可設密碼、可停用/啟用
+            allStaffKeys().forEach(key => {
+                const disabled = isStaffDisabled(key);
+                const hasCustomPw = !!(appData.staffSettings.passwordHashes || {})[key];
+                const dim = disabled ? 'opacity: 0.55;' : '';
+                html += `<div style="${rowStyle}${dim}">
+                    <span style="font-size: 13px; color: #666;">👩‍💼</span>
+                    <input type="text" class="staff-name-input" data-key="${key}" value="${(staffNames[key] || '').replace(/"/g, '&quot;')}" ${disabled ? 'disabled' : ''} style="flex: 1; min-width: 100px; padding: 6px 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    ${disabled ? '<span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">已停用</span>' : ''}
+                    <span style="color: #999; font-size: 12px; white-space: nowrap;">${getPasswordHash(key) ? '🔑 需密碼' : '免密碼'}</span>
+                    <button style="${btnStyle} background: #7a8663; color: white;" onclick="setStaffPassword('${key}')">🔑 密碼</button>
+                    <button style="${btnStyle} background: ${disabled ? '#28a745' : '#dc3545'}; color: white;" onclick="toggleStaffDisabled('${key}')">${disabled ? '✅ 重新啟用' : '🚫 停用'}</button>
+                </div>`;
+            });
+
+            box.innerHTML = html;
+        }
+
+        // 保存自定義人員名字（內建三位存 customStaffNames，新增人員存 staffSettings.extraStaff）
+        function saveStaffNames() {
+            const inputs = document.querySelectorAll('#staffManageList .staff-name-input');
+            const customNames = {};
+            let extraChanged = false;
+
+            for (const inp of inputs) {
+                const key = inp.dataset.key;
+                const name = inp.value.trim();
+                if (inp.disabled) continue;
+                if (!name) {
+                    alert('人員名字不能空白');
+                    return;
+                }
+                if (key === 'stella' || key === 'xiaole' || key === 'lingjia') {
+                    customNames[key] = name;
+                } else if ((appData.staffSettings.extraStaff || {})[key] !== name) {
+                    appData.staffSettings.extraStaff[key] = name;
+                    extraChanged = true;
+                }
             }
 
-            const customNames = {
-                'stella': name1,
-                'xiaole': name2,
-                'lingjia': name3
-            };
+            // 內建三位若有停用而沒出現在輸入框，保留原本名字
+            ['stella', 'xiaole', 'lingjia'].forEach(k => {
+                if (!(k in customNames)) customNames[k] = staffNames[k];
+            });
 
             appData.customStaffNames = customNames;
             localStorage.setItem('customStaffNames', JSON.stringify(customNames));
             if (db) db.ref('customStaffNames').set(customNames).catch(e => console.log('雲端儲存失敗', e));
+            if (extraChanged) saveStaffSettings();
             loadStaffNames();
 
             alert('✅ 人員名字已保存！');
             renderDashboard();
         }
 
+        // 修改人員密碼（主管專用；留空可清除自訂密碼恢復原狀）
+        function setStaffPassword(key) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以修改密碼');
+                return;
+            }
+            const name = key === 'christine' ? 'Christine' : key === 'penny' ? 'Penny' : (staffNames[key] || key);
+            openInputModal(`🔑 設定 ${name} 的新密碼`, '', function(pw) {
+                pw = (pw || '').trim();
+                if (!pw) {
+                    // 留空 → 清除自訂密碼（內建有預設密碼的會恢復預設，其他變免密碼）
+                    if ((appData.staffSettings.passwordHashes || {})[key]) {
+                        if (!confirm(`確定要清除 ${name} 的自訂密碼嗎？${USER_PASSWORD_HASHES[key] ? '將恢復為原本的預設密碼。' : '之後登入將不需要密碼。'}`)) return;
+                        delete appData.staffSettings.passwordHashes[key];
+                        saveStaffSettings();
+                        renderStaffManagement();
+                        alert(`✅ 已清除 ${name} 的自訂密碼`);
+                    }
+                    return;
+                }
+                if (/[^\x20-\x7E]/.test(pw)) {
+                    alert('密碼請使用英文、數字或符號（不支援中文）');
+                    return;
+                }
+                if (pw.length < 4) {
+                    alert('密碼至少 4 個字元');
+                    return;
+                }
+                if (key === 'christine' && !confirm('你正在修改「主管」自己的密碼，改完請務必記住新密碼。確定要修改嗎？')) return;
+
+                if (!appData.staffSettings.passwordHashes) appData.staffSettings.passwordHashes = {};
+                appData.staffSettings.passwordHashes[key] = sha256Hex(pw);
+                saveStaffSettings();
+                renderStaffManagement();
+                alert(`✅ ${name} 的密碼已更新，所有裝置立即生效`);
+            });
+        }
+
+        // 停用 / 重新啟用人員（主管專用；停用不刪資料，隨時可復原）
+        function toggleStaffDisabled(key) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以停用人員');
+                return;
+            }
+            const name = staffNames[key] || key;
+            const disabled = isStaffDisabled(key);
+
+            if (disabled) {
+                if (!confirm(`要重新啟用 ${name} 嗎？登入按鈕會重新出現。`)) return;
+                delete appData.staffSettings.disabled[key];
+            } else {
+                if (!confirm(`確定要停用 ${name} 嗎？\n\n・登入畫面不再顯示這個人\n・無法再登入\n・原本的工作資料會保留，重新啟用即恢復`)) return;
+                if (!appData.staffSettings.disabled) appData.staffSettings.disabled = {};
+                appData.staffSettings.disabled[key] = true;
+            }
+
+            saveStaffSettings();
+            loadStaffNames();
+            renderDashboard('manager');
+        }
+
+        // 新增人員（主管專用）
+        function addStaffMember() {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以新增人員');
+                return;
+            }
+            openInputModal('➕ 新增人員名字', '', function(name) {
+                name = (name || '').trim();
+                if (!name) return;
+                const dup = Object.keys(staffNames).some(k => staffNames[k] === name && !isStaffDisabled(k));
+                if (dup && !confirm(`已有同名人員「${name}」，仍要新增嗎？`)) return;
+
+                const key = 'staff' + Date.now().toString(36);
+                if (!appData.staffSettings.extraStaff) appData.staffSettings.extraStaff = {};
+                appData.staffSettings.extraStaff[key] = name;
+                saveStaffSettings();
+                loadStaffNames();
+                renderDashboard('manager');
+                alert(`✅ 已新增 ${name}！登入畫面會出現他的按鈕（預設免密碼，可在人員管理設定密碼）`);
+            });
+        }
+
         // 選擇身份
         function selectIdentity(identity) {
-            if (USER_PASSWORD_HASHES[identity]) {
+            if (isStaffDisabled(identity)) {
+                alert('此帳號已停用，請聯絡主管');
+                return;
+            }
+            if (getPasswordHash(identity)) {
                 pendingUser = identity;
-                const displayName = identity === 'christine' ? 'Christine 主管模式' : staffNames[identity];
+                const displayName = identity === 'christine' ? 'Christine 主管模式' : (identity === 'penny' ? 'Penny' : staffNames[identity]);
                 document.querySelector('#passwordModal h3').textContent = `${displayName} 需要密碼`;
                 document.getElementById('passwordModal').classList.add('active');
                 document.getElementById('passwordInput').value = '';
@@ -1233,7 +1415,7 @@
         // 檢查密碼（比對 SHA-256 指紋）
         function checkPassword() {
             const password = document.getElementById('passwordInput').value;
-            if (pendingUser && sha256Hex(password) === USER_PASSWORD_HASHES[pendingUser]) {
+            if (pendingUser && sha256Hex(password) === getPasswordHash(pendingUser)) {
                 currentUser = pendingUser;
                 pendingUser = null;
                 document.getElementById('passwordModal').classList.remove('active');
@@ -1384,7 +1566,7 @@
             const helperSel = document.getElementById('workHelper');
             if (helperSel) {
                 helperSel.innerHTML = Object.keys(staffNames)
-                    .filter(k => k !== user)
+                    .filter(k => k !== user && !isStaffDisabled(k))
                     .map(k => `<option value="${k}">${staffNames[k]}</option>`)
                     .join('');
             }
@@ -1994,6 +2176,7 @@
 
             const dashQuery = view === 'manager' ? managerSearchQuery : viewerSearchQuery;
             Object.keys(staffNames).forEach(user => {
+                if (isStaffDisabled(user)) return; // 停用人員不顯示卡片
                 const userWorks = (works[user] || []).filter(w => workMatches(w, dashQuery));
                 const doing = userWorks.filter(w => w.status === '進行中').length;
                 const waiting = userWorks.filter(w => w.status === '等待中').length;
@@ -2180,7 +2363,7 @@
         // 填入「提醒對象」下拉選單（帶入最新的人員名字，排除自己）
         function populateNotifySelects() {
             const ids = ['staffAnnouncementNotify', 'managerAnnouncementNotify', 'viewerAnnouncementNotify'];
-            const keys = ['christine', 'stella', 'xiaole', 'lingjia', 'penny'];
+            const keys = ['christine'].concat(allStaffKeys(), ['penny']).filter(k => !isStaffDisabled(k));
             ids.forEach(id => {
                 const sel = document.getElementById(id);
                 if (!sel) return;
@@ -2215,7 +2398,7 @@
         function showReplyNotifyPicker(annId, text, parentRid) {
             pendingReply = { annId: annId, text: text, replyTo: parentRid || null };
 
-            const keys = ['christine', 'stella', 'xiaole', 'lingjia', 'penny'].filter(k => k !== currentUser);
+            const keys = ['christine'].concat(allStaffKeys(), ['penny']).filter(k => k !== currentUser && !isStaffDisabled(k));
             let btns = keys.map(k => `<button class="submit-btn" style="width: 100%; margin: 0;" onclick="finishReply('${k}')">📣 ${displayNameOf(k)}</button>`).join('');
             btns += `<button class="cancel-btn" style="width: 100%; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="finishReply('')">不提醒，直接送出</button>`;
             document.getElementById('notifyModalButtons').innerHTML = btns;
@@ -2306,6 +2489,7 @@
             const readIds = JSON.parse(localStorage.getItem('readAnnNotify') || '[]');
             const items = [];
             appData.announcements.forEach(a => {
+                if (a.closed) return; // 已結案的公告不再提醒
                 if (a.notify === identity && readIds.indexOf(a.id) < 0) {
                     items.push({ id: a.id, author: a.author, text: a.text });
                 }
@@ -2388,25 +2572,68 @@
         // 單則公告的顯示 HTML
         function buildAnnouncementHtml(ann) {
             const importanceEmoji = ann.importance === '緊急' ? '🚨' : ann.importance === '重要' ? '⚠️' : '📌';
-            const replyBtn = currentUser ? `<button class="work-btn" style="background: #7a8663; color: white;" onclick="replyAnnouncement('${ann.id}')">回覆</button>` : '';
+            const replyBtn = (currentUser && !ann.closed) ? `<button class="work-btn" style="background: #7a8663; color: white;" onclick="replyAnnouncement('${ann.id}')">回覆</button>` : '';
+            const closeBtn = currentUser === 'christine'
+                ? (ann.closed
+                    ? `<button class="work-btn" style="background: #6c757d; color: white;" onclick="reopenAnnouncement('${ann.id}')">還原</button>`
+                    : `<button class="work-btn" style="background: #28a745; color: white;" onclick="closeAnnouncement('${ann.id}')">結案</button>`)
+                : '';
             const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" onclick="deleteAnnouncement('${ann.id}')">刪除</button>` : '';
             const notifyBadge = ann.notify ? ` <span style="background: #f0ad4e; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📣 提醒 ${displayNameOf(ann.notify)}</span>` : '';
+            const closedBadge = ann.closed ? ` <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">✅ 已結案${ann.closedAt ? ' ' + ann.closedAt : ''}</span>` : '';
+            const dim = ann.closed ? ' opacity: 0.6;' : '';
 
             const replies = Array.isArray(ann.replies) ? ann.replies : Object.values(ann.replies || {});
             const repliesHtml = buildRepliesHtml(ann.id, replies);
 
-            return `<div class="announcement-item">
+            return `<div class="announcement-item" style="${dim}">
                 <div style="flex: 1;">
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <span>${importanceEmoji} ${ann.importance}</span>
-                        <strong>${ann.text}</strong>${notifyBadge}
+                        <strong${ann.closed ? ' style="text-decoration: line-through; color: #888;"' : ''}>${ann.text}</strong>${closedBadge}${notifyBadge}
                     </div>
                     <div class="announcement-author">📝 ${ann.author}</div>
                     <div class="announcement-time">${ann.time}</div>
                     ${repliesHtml}
                 </div>
-                <div style="display: flex; gap: 5px; margin-left: auto;">${replyBtn}${deleteBtn}</div>
+                <div style="display: flex; gap: 5px; margin-left: auto;">${replyBtn}${closeBtn}${deleteBtn}</div>
             </div>`;
+        }
+
+        // 結案 / 還原公告（僅主管）
+        function closeAnnouncement(annId) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以結案');
+                return;
+            }
+            const ann = appData.announcements.find(a => a.id === annId);
+            if (!ann) return;
+            ann.closed = true;
+            ann.closedAt = new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit' });
+            saveAnnouncements();
+            loadAnnouncements('manager');
+        }
+
+        function reopenAnnouncement(annId) {
+            if (currentUser !== 'christine') return;
+            const ann = appData.announcements.find(a => a.id === annId);
+            if (!ann) return;
+            delete ann.closed;
+            delete ann.closedAt;
+            saveAnnouncements();
+            loadAnnouncements('manager');
+        }
+
+        // 切換「已結案的公告」收合
+        function toggleClosedAnnouncements() {
+            const key = 'announcements|closed';
+            const cur = (key in collapsedSections) ? collapsedSections[key] : true;
+            collapsedSections[key] = !cur;
+            localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
+
+            const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                              document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+            loadAnnouncements(currentView);
         }
 
         // 切換「較早的公告」收合
@@ -2422,16 +2649,20 @@
         }
 
         function loadAnnouncements(view) {
-            let announcements = appData.announcements.slice();
+            const all = appData.announcements.slice();
 
             // 最新在前；緊急公告永遠置頂
             const ts = a => parseInt(String(a.id).slice(0, 13)) || 0;
-            announcements.sort((a, b) => {
+            const byNewest = (a, b) => {
                 const ua = a.importance === '緊急' ? 1 : 0;
                 const ub = b.importance === '緊急' ? 1 : 0;
                 if (ua !== ub) return ub - ua;
                 return ts(b) - ts(a);
-            });
+            };
+
+            // 已結案的公告獨立收到最下方
+            const announcements = all.filter(a => !a.closed).sort(byNewest);
+            const closedList = all.filter(a => a.closed).sort((a, b) => ts(b) - ts(a));
 
             // 預設只顯示最新 5 則（含置頂的緊急），其餘收合
             const VISIBLE_COUNT = 5;
@@ -2447,6 +2678,15 @@
                 html += `<div style="cursor: pointer; user-select: none; color: #666; font-weight: bold; padding: 8px 0; border-top: 1px dashed #aaa; margin-top: 8px;" onclick="toggleOlderAnnouncements()">${collapsed ? '▶' : '▼'} 較早的公告 (${older.length})</div>`;
                 if (!collapsed) {
                     older.forEach(ann => { html += buildAnnouncementHtml(ann); });
+                }
+            }
+
+            if (closedList.length > 0) {
+                const key = 'announcements|closed';
+                const collapsed = (key in collapsedSections) ? collapsedSections[key] : true;
+                html += `<div style="cursor: pointer; user-select: none; color: #999; font-weight: bold; padding: 8px 0; border-top: 1px dashed #aaa; margin-top: 8px;" onclick="toggleClosedAnnouncements()">${collapsed ? '▶' : '▼'} ✅ 已結案的公告 (${closedList.length})</div>`;
+                if (!collapsed) {
+                    closedList.forEach(ann => { html += buildAnnouncementHtml(ann); });
                 }
             }
 
