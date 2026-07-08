@@ -2375,7 +2375,7 @@
             let announcements = appData.announcements.slice();
 
             // 最新在前；緊急公告永遠置頂
-            const ts = a => parseInt(a.id) || 0;
+            const ts = a => parseInt(String(a.id).slice(0, 13)) || 0;
             announcements.sort((a, b) => {
                 const ua = a.importance === '緊急' ? 1 : 0;
                 const ub = b.importance === '緊急' ? 1 : 0;
