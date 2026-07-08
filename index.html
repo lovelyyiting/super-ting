@@ -2198,21 +2198,22 @@
         // 回覆公告：輸入內容後跳出選人視窗（按按鈕選擇提醒對象）
         let pendingReply = null;
 
-        function replyAnnouncement(annId) {
+        function replyAnnouncement(annId, parentRid) {
             if (!currentUser) return;
 
             const ann = appData.announcements.find(a => a.id === annId);
             if (!ann) return;
 
-            openInputModal('💬 回覆公告：' + ann.text.substring(0, 20), '', function(text) {
+            const title = parentRid ? '💬 回覆留言' : '💬 回覆公告：' + ann.text.substring(0, 20);
+            openInputModal(title, '', function(text) {
                 if (!text.trim()) return;
-                showReplyNotifyPicker(annId, text.trim());
+                showReplyNotifyPicker(annId, text.trim(), parentRid);
             });
         }
 
         // 回覆輸入完成後，跳出選人視窗
-        function showReplyNotifyPicker(annId, text) {
-            pendingReply = { annId: annId, text: text };
+        function showReplyNotifyPicker(annId, text, parentRid) {
+            pendingReply = { annId: annId, text: text, replyTo: parentRid || null };
 
             const keys = ['christine', 'stella', 'xiaole', 'lingjia', 'penny'].filter(k => k !== currentUser);
             let btns = keys.map(k => `<button class="submit-btn" style="width: 100%; margin: 0;" onclick="finishReply('${k}')">📣 ${displayNameOf(k)}</button>`).join('');
@@ -2228,6 +2229,7 @@
 
             const ann = appData.announcements.find(a => a.id === pendingReply.annId);
             const text = pendingReply.text;
+            const replyTo = pendingReply.replyTo;
             pendingReply = null;
             if (!ann) return;
 
@@ -2239,6 +2241,7 @@
                 time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
             };
             if (notify) reply.notify = notify;
+            if (replyTo) reply.replyTo = replyTo;
             ann.replies.push(reply);
 
             saveAnnouncements();
@@ -2271,6 +2274,31 @@
             const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
                               document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
             loadAnnouncements(currentView);
+        }
+
+        // 編輯回覆（作者本人或主管）
+        function editReply(annId, rid) {
+            const ann = appData.announcements.find(a => a.id === annId);
+            if (!ann) return;
+            const replies = Array.isArray(ann.replies) ? ann.replies : Object.values(ann.replies || {});
+            const reply = replies.find(r => r && r.rid === rid);
+            if (!reply) return;
+
+            if (currentUser !== 'christine' && reply.author !== currentDisplayName()) {
+                alert('只能編輯自己的回覆');
+                return;
+            }
+
+            openInputModal('✏️ 編輯回覆', reply.text || '', function(text) {
+                if (!text.trim()) return;
+                reply.text = text.trim();
+                reply.edited = true;
+                ann.replies = replies;
+                saveAnnouncements();
+                const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                                  document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+                loadAnnouncements(currentView);
+            });
         }
 
         // 尚未確認的「點名提醒」（公告本身＋回覆，已按「知道了」的記在本機）
@@ -2328,6 +2356,35 @@
             }
         }
 
+        // 產生回覆串（扁平陣列，用 replyTo 做縮排；可對回覆再回覆）
+        function buildRepliesHtml(annId, replies) {
+            const byParent = {};
+            replies.forEach((r, idx) => {
+                if (!r || !r.text) return;
+                const key = r.replyTo || '';
+                (byParent[key] = byParent[key] || []).push({ r: r, idx: idx });
+            });
+
+            function renderLevel(parentKey, depth) {
+                const list = byParent[parentKey] || [];
+                let h = '';
+                list.forEach(({ r, idx }) => {
+                    const replyNotify = r.notify ? ` <span style="background: #f0ad4e; color: white; padding: 1px 6px; border-radius: 8px; font-size: 11px; white-space: nowrap;">📣 ${displayNameOf(r.notify)}</span>` : '';
+                    const editedTag = r.edited ? ` <span style="color: #bbb; font-size: 11px;">（已編輯）</span>` : '';
+                    const canEdit = r.rid && (currentUser === 'christine' || r.author === currentDisplayName());
+                    const editBtn = canEdit ? ` <button class="work-btn" style="padding: 2px 8px; font-size: 11px; background: #7a8663; color: white;" onclick="editReply('${annId}', '${r.rid}')">編輯</button>` : '';
+                    const replyBtn = (currentUser && r.rid) ? ` <button class="work-btn" style="padding: 2px 8px; font-size: 11px; background: #9aa77f; color: white;" onclick="replyAnnouncement('${annId}', '${r.rid}')">回覆</button>` : '';
+                    const delReplyBtn = currentUser === 'christine' ? ` <button class="work-btn delete-btn" style="padding: 2px 8px; font-size: 11px;" onclick="deleteReply('${annId}', ${r.rid ? `'${r.rid}'` : idx})">刪除</button>` : '';
+                    const indent = 20 + depth * 22;
+                    h += `<div style="margin-left: ${indent}px; margin-top: 6px; padding: 6px 10px; background: #f0f2ff; border-left: 3px solid #7a8663; border-radius: 3px; font-size: 13px;">↳ <strong>${r.author}</strong>：${r.text}${editedTag}${replyNotify} <span style="color: #999; font-size: 11px;">${r.time || ''}</span>${editBtn}${replyBtn}${delReplyBtn}</div>`;
+                    if (r.rid) h += renderLevel(r.rid, depth + 1);
+                });
+                return h;
+            }
+
+            return renderLevel('', 0);
+        }
+
         // 單則公告的顯示 HTML
         function buildAnnouncementHtml(ann) {
             const importanceEmoji = ann.importance === '緊急' ? '🚨' : ann.importance === '重要' ? '⚠️' : '📌';
@@ -2335,15 +2392,8 @@
             const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" onclick="deleteAnnouncement('${ann.id}')">刪除</button>` : '';
             const notifyBadge = ann.notify ? ` <span style="background: #f0ad4e; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📣 提醒 ${displayNameOf(ann.notify)}</span>` : '';
 
-            let repliesHtml = '';
             const replies = Array.isArray(ann.replies) ? ann.replies : Object.values(ann.replies || {});
-            replies.forEach((r, ridx) => {
-                if (r && r.text) {
-                    const replyNotify = r.notify ? ` <span style="background: #f0ad4e; color: white; padding: 1px 6px; border-radius: 8px; font-size: 11px; white-space: nowrap;">📣 ${displayNameOf(r.notify)}</span>` : '';
-                    const delReplyBtn = currentUser === 'christine' ? ` <button class="work-btn delete-btn" style="padding: 2px 8px; font-size: 11px;" onclick="deleteReply('${ann.id}', ${r.rid ? `'${r.rid}'` : ridx})">刪除</button>` : '';
-                    repliesHtml += `<div style="margin-left: 20px; margin-top: 6px; padding: 6px 10px; background: #f0f2ff; border-left: 3px solid #7a8663; border-radius: 3px; font-size: 13px;">↳ <strong>${r.author}</strong>：${r.text}${replyNotify} <span style="color: #999; font-size: 11px;">${r.time || ''}</span>${delReplyBtn}</div>`;
-                }
-            });
+            const repliesHtml = buildRepliesHtml(ann.id, replies);
 
             return `<div class="announcement-item">
                 <div style="flex: 1;">
@@ -2483,11 +2533,59 @@
             }
         }
 
+        // 出貨需求追加一筆更新（任何登入者皆可）
+        function addShipmentUpdate(shipId) {
+            if (!currentUser) return;
+            const ship = appData.shipments.find(s => s.id === shipId);
+            if (!ship) return;
+
+            openInputModal('🔄 更新出貨進度', '', function(text) {
+                if (!text.trim()) return;
+                if (!Array.isArray(ship.updates)) ship.updates = Object.values(ship.updates || {});
+                ship.updates.push({
+                    uid: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                    author: currentDisplayName(),
+                    text: text.trim(),
+                    time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                });
+                saveShipments();
+                const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                                  document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+                loadShipments(currentView);
+            });
+        }
+
+        // 刪除某筆出貨更新（僅主管）
+        function deleteShipmentUpdate(shipId, uid) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以刪除更新');
+                return;
+            }
+            const ship = appData.shipments.find(s => s.id === shipId);
+            if (!ship) return;
+            let updates = Array.isArray(ship.updates) ? ship.updates : Object.values(ship.updates || {});
+            ship.updates = updates.filter(u => u && u.uid !== uid);
+            saveShipments();
+            const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                              document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+            loadShipments(currentView);
+        }
+
         // 單筆出貨需求顯示
         function renderShipmentItem(ship) {
             const badge = shipmentBadge(ship.date);
             const dateDisplay = ship.date ? ship.date.replace(/^\d{4}-/, '').replace('-', '/') : '';
-            const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" style="margin-left: auto;" onclick="deleteShipment('${ship.id}')">刪除</button>` : '';
+            const updateBtn = currentUser ? `<button class="work-btn" style="background: #7a8663; color: white;" onclick="addShipmentUpdate('${ship.id}')">更新</button>` : '';
+            const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" onclick="deleteShipment('${ship.id}')">刪除</button>` : '';
+
+            let updatesHtml = '';
+            const updates = Array.isArray(ship.updates) ? ship.updates : Object.values(ship.updates || {});
+            updates.forEach(u => {
+                if (u && u.text) {
+                    const delUpdBtn = currentUser === 'christine' && u.uid ? ` <button class="work-btn delete-btn" style="padding: 2px 8px; font-size: 11px;" onclick="deleteShipmentUpdate('${ship.id}', '${u.uid}')">刪除</button>` : '';
+                    updatesHtml += `<div style="margin-left: 20px; margin-top: 6px; padding: 6px 10px; background: #eef7ee; border-left: 3px solid #28a745; border-radius: 3px; font-size: 13px;">🔄 <strong>${u.author}</strong>：${u.text} <span style="color: #999; font-size: 11px;">${u.time || ''}</span>${delUpdBtn}</div>`;
+                }
+            });
 
             return `<div class="announcement-item">
                 <div style="flex: 1;">
@@ -2497,8 +2595,9 @@
                     </div>
                     <div class="announcement-author">📝 ${ship.author}</div>
                     <div class="announcement-time">${ship.time}</div>
+                    ${updatesHtml}
                 </div>
-                ${deleteBtn}
+                <div style="display: flex; gap: 5px; margin-left: auto;">${updateBtn}${deleteBtn}</div>
             </div>`;
         }
 
