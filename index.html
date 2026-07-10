@@ -675,6 +675,32 @@
             white-space: nowrap;
         }
         .view-pages { flex: 1; min-width: 0; }
+
+        /* 聊天室 */
+        .chat-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 55vh;
+            overflow-y: auto;
+            padding: 4px 2px;
+        }
+        .chat-msg {
+            max-width: 78%;
+            padding: 8px 12px;
+            border-radius: 12px;
+            background: #fffdf6;
+            border: 1px solid #e9e0cb;
+            align-self: flex-start;
+            font-size: 14px;
+            word-break: break-word;
+        }
+        .chat-msg.mine {
+            align-self: flex-end;
+            background: #e7ecdd;
+            border-color: #c6d0b3;
+        }
+        .chat-meta { font-size: 11px; color: #a89f8d; margin-bottom: 2px; }
         @media (max-width: 768px) {
             .view-layout { flex-direction: column; }
             .side-nav {
@@ -751,6 +777,15 @@
                 </div>
             </div>
 
+            <div class="announcement-section" data-page="chat" style="background: #f0f2ec; border-color: #b9c4a5;">
+                <h3>💬 聊天室</h3>
+                <div id="staffChatList" class="chat-list"></div>
+                <div style="display: flex; gap: 10px; margin-top: 12px;">
+                    <input type="text" id="staffChatInput" placeholder="說點什麼..." style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" onkeypress="if(event.key==='Enter') sendChatMessage('staff')">
+                    <button onclick="sendChatMessage('staff')" class="submit-btn" style="margin-top: 0;">送出</button>
+                </div>
+            </div>
+
             <div class="add-work-form" data-page="add">
                 <h3>➕ 新增工作</h3>
                 <form id="addWorkForm">
@@ -798,9 +833,12 @@
             </div>
 
             <div data-page="works">
+                <div id="myStatusBar" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;"></div>
                 <input type="text" id="staffSearch" placeholder="🔍 搜尋工作（名稱、備註、留言、進度）" oninput="staffSearchQuery = this.value; renderStaffView(currentUser);" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
 
                 <div id="staffWorkList"></div>
+
+                <div id="peerWorkList" style="margin-top: 30px;"></div>
             </div>
 
             </div>
@@ -849,6 +887,15 @@
                         <input type="text" id="managerShipText" placeholder="客戶 / 品名 / 數量..." style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
                         <button onclick="postShipment('manager')" class="submit-btn" style="margin-top: 0;">新增</button>
                     </div>
+                </div>
+            </div>
+
+            <div class="announcement-section" data-page="chat" style="background: #f0f2ec; border-color: #b9c4a5;">
+                <h3>💬 聊天室</h3>
+                <div id="managerChatList" class="chat-list"></div>
+                <div style="display: flex; gap: 10px; margin-top: 12px;">
+                    <input type="text" id="managerChatInput" placeholder="說點什麼..." style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" onkeypress="if(event.key==='Enter') sendChatMessage('manager')">
+                    <button onclick="sendChatMessage('manager')" class="submit-btn" style="margin-top: 0;">送出</button>
                 </div>
             </div>
 
@@ -931,6 +978,15 @@
                         <input type="text" id="viewerShipText" placeholder="客戶 / 品名 / 數量..." style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
                         <button onclick="postShipment('viewer')" class="submit-btn" style="margin-top: 0;">新增</button>
                     </div>
+                </div>
+            </div>
+
+            <div class="announcement-section" data-page="chat" style="background: #f0f2ec; border-color: #b9c4a5;">
+                <h3>💬 聊天室</h3>
+                <div id="viewerChatList" class="chat-list"></div>
+                <div style="display: flex; gap: 10px; margin-top: 12px;">
+                    <input type="text" id="viewerChatInput" placeholder="說點什麼..." style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" onkeypress="if(event.key==='Enter') sendChatMessage('viewer')">
+                    <button onclick="sendChatMessage('viewer')" class="submit-btn" style="margin-top: 0;">送出</button>
                 </div>
             </div>
 
@@ -1127,7 +1183,11 @@
             shipments: [],
             customStaffNames: {},
             // 人員設定：密碼覆蓋、停用名單、新增人員（皆為選填，雲端同步）
-            staffSettings: { passwordHashes: {}, disabled: {}, extraStaff: {} }
+            staffSettings: { passwordHashes: {}, disabled: {}, extraStaff: {} },
+            // 聊天室訊息（每則訊息獨立節點，不會互相覆蓋）
+            chat: [],
+            // 人員狀態：有空 / 在忙勿擾（選填）
+            staffStatus: {}
         };
 
         function normalizeStaffSettings(v) {
@@ -1190,6 +1250,8 @@
             appData.shipments = JSON.parse(localStorage.getItem('shipments') || '[]');
             appData.customStaffNames = JSON.parse(localStorage.getItem('customStaffNames') || '{}');
             appData.staffSettings = normalizeStaffSettings(JSON.parse(localStorage.getItem('staffSettings') || 'null'));
+            appData.chat = JSON.parse(localStorage.getItem('chat') || '[]');
+            appData.staffStatus = JSON.parse(localStorage.getItem('staffStatus') || '{}');
             loadStaffNames();
 
             if (!db) {
@@ -1301,6 +1363,17 @@
                 loadStaffNames();
                 rerenderCurrentView();
             });
+            db.ref('chat').on('value', snap => {
+                const v = snap.val();
+                appData.chat = v ? Object.values(v).filter(Boolean) : [];
+                localStorage.setItem('chat', JSON.stringify(appData.chat));
+                rerenderCurrentView();
+            });
+            db.ref('staffStatus').on('value', snap => {
+                appData.staffStatus = snap.val() || {};
+                localStorage.setItem('staffStatus', JSON.stringify(appData.staffStatus));
+                rerenderCurrentView();
+            });
         }
 
         // 儲存人員設定（本機 + 雲端）
@@ -1339,13 +1412,16 @@
                 renderDashboard('manager');
                 loadAnnouncements('manager');
                 loadShipments('manager');
+                renderChat('manager');
             } else if (document.getElementById('viewerView').classList.contains('active')) {
                 renderDashboard('viewer');
                 loadAnnouncements('viewer');
                 loadShipments('viewer');
                 renderAlerts('viewer');
+                renderChat('viewer');
             } else if (document.getElementById('staffView').classList.contains('active') && currentUser) {
                 renderStaffView(currentUser);
+                renderChat('staff');
             }
         }
 
@@ -1638,6 +1714,7 @@
                 { key: 'home', label: '🏠 主頁' },
                 { key: 'announce', label: '📢 公布欄' },
                 { key: 'ship', label: '🚚 出貨需求' },
+                { key: 'chat', label: '💬 聊天室' },
                 { key: 'add', label: '➕ 新增工作' },
                 { key: 'works', label: '📋 我的工作' }
             ],
@@ -1645,6 +1722,7 @@
                 { key: 'home', label: '🏠 主頁' },
                 { key: 'announce', label: '📢 公布欄' },
                 { key: 'ship', label: '🚚 出貨需求' },
+                { key: 'chat', label: '💬 聊天室' },
                 { key: 'assign', label: '📌 指派追蹤' },
                 { key: 'board', label: '🎯 戰情室' },
                 { key: 'staffmgr', label: '⚙️ 人員管理' },
@@ -1654,6 +1732,7 @@
                 { key: 'home', label: '🏠 主頁' },
                 { key: 'announce', label: '📢 公布欄' },
                 { key: 'ship', label: '🚚 出貨需求' },
+                { key: 'chat', label: '💬 聊天室' },
                 { key: 'board', label: '👑 全員總覽' }
             ]
         };
@@ -1681,14 +1760,15 @@
             } catch (e) { return 0; }
         }
 
-        // 重繪功能列（主頁有未讀通知會顯示紅色數字）
+        // 重繪功能列（主頁/聊天室有未讀會顯示紅色數字）
         function renderNav(view) {
             const nav = document.getElementById(view + 'Nav');
             if (!nav) return;
-            const count = homeAlertCount(view);
+            const counts = { home: homeAlertCount(view), chat: chatUnreadCount() };
             nav.innerHTML = NAV_PAGES[view].map(p => {
                 const active = currentPage[view] === p.key;
-                const badge = (p.key === 'home' && count > 0) ? `<span class="nav-badge">${count}</span>` : '';
+                const n = counts[p.key] || 0;
+                const badge = n > 0 ? `<span class="nav-badge">${n}</span>` : '';
                 return `<button class="nav-item${active ? ' active' : ''}" onclick="switchPage('${view}', '${p.key}')">${p.label}${badge}</button>`;
             }).join('');
         }
@@ -1706,12 +1786,117 @@
 
         function switchPage(view, page) {
             currentPage[view] = page;
+            if (page === 'chat') markChatSeen(); // 點進聊天室就標為已讀
             applyPage(view);
         }
 
         // 主頁沒有通知時的提示
         function emptyNoticeHtml() {
             return '<div style="text-align: center; color: #8a8172; padding: 40px 10px; font-size: 15px;">🍵 目前沒有需要你注意的通知</div>';
+        }
+
+        // ===== 聊天室（所有人共用，每則訊息獨立節點即時同步） =====
+        function chatTs(id) { return parseInt(String(id).slice(0, 13)) || 0; }
+
+        // 未讀訊息數（自己發的不算，看過的記在本機）
+        function chatUnreadCount() {
+            const seen = parseInt(localStorage.getItem('chatSeenTs') || '0');
+            return (appData.chat || []).filter(m => m && chatTs(m.id) > seen && m.author !== currentDisplayName()).length;
+        }
+
+        function markChatSeen() {
+            let latest = 0;
+            (appData.chat || []).forEach(m => { if (m) latest = Math.max(latest, chatTs(m.id)); });
+            if (latest) localStorage.setItem('chatSeenTs', String(latest));
+        }
+
+        function renderChat(view) {
+            const map = { staff: 'staffChatList', manager: 'managerChatList', viewer: 'viewerChatList' };
+            const el = document.getElementById(map[view]);
+            if (!el) return;
+            const msgs = (appData.chat || []).slice().sort((a, b) => chatTs(a.id) - chatTs(b.id)).slice(-100);
+            if (msgs.length === 0) {
+                el.innerHTML = '<p style="color: #999;">還沒有訊息，說句話吧！</p>';
+            } else {
+                el.innerHTML = msgs.map(m => {
+                    const mine = m.author === currentDisplayName();
+                    const delBtn = currentUser === 'christine' ? ` <span style="color: #c99a8f; cursor: pointer;" onclick="deleteChatMessage('${m.id}')">刪除</span>` : '';
+                    return `<div class="chat-msg${mine ? ' mine' : ''}"><div class="chat-meta">${m.author}｜${m.time || ''}${delBtn}</div>${m.text}</div>`;
+                }).join('');
+            }
+            el.scrollTop = el.scrollHeight;
+            // 正在看聊天室頁就順手標成已讀
+            if (currentPage[view] === 'chat') markChatSeen();
+        }
+
+        function sendChatMessage(view) {
+            if (!currentUser) return;
+            const map = { staff: 'staffChatInput', manager: 'managerChatInput', viewer: 'viewerChatInput' };
+            const input = document.getElementById(map[view]);
+            if (!input) return;
+            const text = (input.value || '').trim();
+            if (!text) return;
+
+            const msg = {
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                author: currentDisplayName(),
+                text: text,
+                time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+            };
+            appData.chat.push(msg);
+            localStorage.setItem('chat', JSON.stringify(appData.chat));
+            // 每則訊息寫自己的節點，兩個人同時發言不會互相蓋掉
+            if (db) db.ref('chat/' + msg.id).set(msg).catch(e => console.log('雲端儲存失敗', e));
+
+            input.value = '';
+            markChatSeen();
+            renderChat(view);
+            renderNav(view);
+        }
+
+        // 刪除聊天訊息（僅主管）
+        function deleteChatMessage(id) {
+            if (currentUser !== 'christine') return;
+            if (!confirm('確定要刪除這則訊息嗎？')) return;
+            appData.chat = (appData.chat || []).filter(m => m && m.id !== id);
+            localStorage.setItem('chat', JSON.stringify(appData.chat));
+            if (db) db.ref('chat/' + id).remove().catch(e => console.log('雲端儲存失敗', e));
+            rerenderCurrentView();
+        }
+
+        // ===== 人員狀態：有空 / 在忙勿擾（生管自己設定，大家都看得到） =====
+        function setMyStatus(state) {
+            if (!currentUser) return;
+            if (!appData.staffStatus) appData.staffStatus = {};
+            const cur = appData.staffStatus[currentUser];
+            const next = cur === state ? '' : state; // 再按一次同個狀態 = 取消
+            if (next) appData.staffStatus[currentUser] = next; else delete appData.staffStatus[currentUser];
+            localStorage.setItem('staffStatus', JSON.stringify(appData.staffStatus));
+            if (db) db.ref('staffStatus/' + currentUser).set(next || null).catch(e => console.log('雲端儲存失敗', e));
+            rerenderCurrentView();
+        }
+
+        // 狀態標籤 HTML（沒設定就空白）
+        function statusBadge(key) {
+            const s = (appData.staffStatus || {})[key];
+            if (!s) return '';
+            const busy = s === '在忙勿擾';
+            return ` <span style="background: ${busy ? '#dc3545' : '#28a745'}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap; font-weight: normal;">${busy ? '🔴 在忙勿擾' : '🟢 有空'}</span>`;
+        }
+
+        // 「我的狀態」按鈕列（我的工作頁最上方）
+        function renderMyStatusBar() {
+            const el = document.getElementById('myStatusBar');
+            if (!el || !currentUser) return;
+            const cur = (appData.staffStatus || {})[currentUser] || '';
+            const btn = (state, emoji, color) => {
+                const active = cur === state;
+                return `<button class="work-btn" style="background: ${active ? color : '#e9e2d0'}; color: ${active ? 'white' : '#6b6353'};" onclick="setMyStatus('${state}')">${emoji} ${state}${active ? ' ✓' : ''}</button>`;
+            };
+            el.innerHTML = `<span style="color: #8a8172; font-size: 14px;">我的狀態：</span>`
+                + btn('有空', '🟢', '#28a745')
+                + btn('在忙勿擾', '🔴', '#dc3545')
+                + `<span style="color: #b3a98f; font-size: 12px;">（大家都看得到，再按一次可取消）</span>`;
         }
 
         // 選擇身份
@@ -1765,6 +1950,7 @@
                 renderDashboard();
                 loadAnnouncements('manager');
                 loadShipments('manager');
+                renderChat('manager');
                 applyPage('manager');
             } else if (user === 'penny') {
                 document.getElementById('viewerView').classList.add('active');
@@ -1773,11 +1959,13 @@
                 loadAnnouncements('viewer');
                 loadShipments('viewer');
                 renderAlerts('viewer');
+                renderChat('viewer');
                 applyPage('viewer');
             } else {
                 document.getElementById('staffView').classList.add('active');
                 currentPage.staff = 'home';
                 renderStaffView(user);
+                renderChat('staff');
                 applyPage('staff');
             }
         }
@@ -1908,6 +2096,27 @@
             const html = renderWorksByStatus(works, user, true);
             const emptySearch = (staffSearchQuery.trim() && works.length === 0) ? '<p style="color: #999;">沒有符合搜尋的工作</p>' : '';
             document.getElementById('staffWorkList').innerHTML = todaySummaryHtml(user) + emptySearch + html;
+
+            // 我的狀態列＋隊友目前的工作（不含已完成），看得到彼此的忙碌程度
+            renderMyStatusBar();
+            const peerEl = document.getElementById('peerWorkList');
+            if (peerEl) {
+                let peerHtml = '';
+                Object.keys(staffNames).forEach(k => {
+                    if (k === user || isStaffDisabled(k)) return;
+                    const list = (appData.works[k] || []).filter(w => w.status !== '完成');
+                    const doing = list.filter(w => w.status === '進行中').length;
+                    const waiting = list.filter(w => w.status === '等待中').length;
+                    peerHtml += `<div class="staff-card" style="margin-bottom: 15px;">
+                        <div class="staff-name">${staffNames[k]}${statusBadge(k)} <span style="font-size: 13px; color: #8a8172; font-weight: normal;">｜🔨 進行中 ${doing}・📥 等待中 ${waiting}</span></div>
+                        ${list.length > 0 ? renderWorksByStatus(list, k, false) : '<p style="color: #999;">目前沒有未完成的工作</p>'}
+                    </div>`;
+                });
+                peerEl.innerHTML = peerHtml
+                    ? `<h3 style="background: #f3edda; border: 1px solid #e4dabc; border-radius: 10px; padding: 12px 14px; font-size: 15px; margin-bottom: 15px;">👀 隊友目前的工作</h3>` + peerHtml
+                    : '';
+            }
+
             loadAnnouncements('staff');
             loadShipments('staff');
             renderAlerts('staff', user);
@@ -2641,7 +2850,7 @@
                 const done = userWorks.filter(w => w.status === '完成').length;
 
                 html += `<div class="staff-card">
-                    <div class="staff-name">${staffNames[user]}</div>
+                    <div class="staff-name">${staffNames[user]}${statusBadge(user)}</div>
                     <div class="stats">
                         <div class="stat"><div class="stat-label">進行中</div><div class="stat-value">${doing}</div></div>
                         <div class="stat"><div class="stat-label">等待中</div><div class="stat-value">${waiting}</div></div>
