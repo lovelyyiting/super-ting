@@ -629,6 +629,65 @@
             border-radius: 16px;
             box-shadow: 0 24px 60px rgba(40,34,24,0.30);
         }
+
+        /* 左側功能列：依身份權限顯示模組，點選切換頁面 */
+        .view-layout { display: flex; gap: 18px; align-items: flex-start; }
+        .side-nav {
+            flex: 0 0 168px;
+            position: sticky;
+            top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 6px;
+            width: 100%;
+            padding: 11px 14px;
+            background: #fffdf6;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            color: var(--ink);
+            font-family: inherit;
+            font-size: 14px;
+            letter-spacing: 0.05em;
+            text-align: left;
+            cursor: pointer;
+            transition: background .15s ease, transform .15s ease, box-shadow .15s ease;
+        }
+        .nav-item:hover { background: #f3edda; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+        .nav-item.active {
+            background: var(--olive);
+            border-color: var(--olive);
+            color: white;
+            box-shadow: 0 4px 12px rgba(122,134,99,0.35);
+        }
+        .nav-badge {
+            margin-left: auto;
+            background: #dc3545;
+            color: white;
+            border-radius: 999px;
+            font-size: 11px;
+            padding: 1px 7px;
+            white-space: nowrap;
+        }
+        .view-pages { flex: 1; min-width: 0; }
+        @media (max-width: 768px) {
+            .view-layout { flex-direction: column; }
+            .side-nav {
+                position: static;
+                flex: none;
+                width: 100%;
+                flex-direction: row;
+                overflow-x: auto;
+                padding-bottom: 4px;
+                -webkit-overflow-scrolling: touch;
+            }
+            .nav-item { width: auto; white-space: nowrap; flex: 0 0 auto; }
+        }
     </style>
 </head>
 <body>
@@ -657,9 +716,13 @@
                 <button class="logout-btn" onclick="logout()">登出</button>
             </div>
 
-            <div id="staffAlerts"></div>
+            <div class="view-layout">
+            <nav class="side-nav" id="staffNav"></nav>
+            <div class="view-pages" id="staffPages">
 
-            <div class="announcement-section">
+            <div id="staffAlerts" data-page="home"></div>
+
+            <div class="announcement-section" data-page="announce">
                 <h3>📢 公布欄</h3>
                 <div id="staffAnnouncementList"></div>
                 <div style="margin-top: 15px; border-top: 1px solid #ffd700; padding-top: 15px;">
@@ -676,7 +739,7 @@
                 </div>
             </div>
 
-            <div class="announcement-section" style="background: #eef5ff; border-color: #7fb3ff;">
+            <div class="announcement-section" data-page="ship" style="background: #eef5ff; border-color: #7fb3ff;">
                 <h3>🚚 近期出貨需求</h3>
                 <div id="staffShipmentList"></div>
                 <div style="margin-top: 15px; border-top: 1px solid #7fb3ff; padding-top: 15px;">
@@ -688,7 +751,7 @@
                 </div>
             </div>
 
-            <div class="add-work-form">
+            <div class="add-work-form" data-page="add">
                 <h3>➕ 新增工作</h3>
                 <form id="addWorkForm">
                     <div class="form-group">
@@ -734,9 +797,14 @@
                 </form>
             </div>
 
-            <input type="text" id="staffSearch" placeholder="🔍 搜尋工作（名稱、備註、留言、進度）" oninput="staffSearchQuery = this.value; renderStaffView(currentUser);" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
+            <div data-page="works">
+                <input type="text" id="staffSearch" placeholder="🔍 搜尋工作（名稱、備註、留言、進度）" oninput="staffSearchQuery = this.value; renderStaffView(currentUser);" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
 
-            <div id="staffWorkList"></div>
+                <div id="staffWorkList"></div>
+            </div>
+
+            </div>
+            </div>
         </div>
 
         <!-- 主管視圖 -->
@@ -749,9 +817,13 @@
                 </div>
             </div>
 
-            <div id="managerAlerts"></div>
+            <div class="view-layout">
+            <nav class="side-nav" id="managerNav"></nav>
+            <div class="view-pages" id="managerPages">
 
-            <div class="announcement-section">
+            <div id="managerAlerts" data-page="home"></div>
+
+            <div class="announcement-section" data-page="announce">
                 <h3>📢 公布欄</h3>
                 <div id="announcementList"></div>
                 <div style="margin-top: 15px; border-top: 1px solid #ffd700; padding-top: 15px;">
@@ -768,7 +840,7 @@
                 </div>
             </div>
 
-            <div class="announcement-section" style="background: #eef5ff; border-color: #7fb3ff;">
+            <div class="announcement-section" data-page="ship" style="background: #eef5ff; border-color: #7fb3ff;">
                 <h3>🚚 近期出貨需求</h3>
                 <div id="shipmentList"></div>
                 <div style="margin-top: 15px; border-top: 1px solid #7fb3ff; padding-top: 15px;">
@@ -780,16 +852,18 @@
                 </div>
             </div>
 
-            <div class="announcement-section" style="background: #fce4f1; border-color: #d63384;">
+            <div class="announcement-section" data-page="assign" style="background: #fce4f1; border-color: #d63384;">
                 <h3 id="assignBoardHeader" style="cursor: pointer; user-select: none;" onclick="toggleAssignBoard()">▼ 📌 指派工作追蹤</h3>
                 <div id="assignBoard"></div>
             </div>
 
-            <input type="text" id="managerSearch" placeholder="🔍 搜尋所有人的工作（名稱、備註、留言、進度）" oninput="managerSearchQuery = this.value; renderDashboard('manager');" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
+            <div data-page="board">
+                <input type="text" id="managerSearch" placeholder="🔍 搜尋所有人的工作（名稱、備註、留言、進度）" oninput="managerSearchQuery = this.value; renderDashboard('manager');" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
 
-            <div class="dashboard-grid" id="dashboardGrid"></div>
+                <div class="dashboard-grid" id="dashboardGrid"></div>
+            </div>
 
-            <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
+            <div data-page="staffmgr" style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
                 <h3>⚙️ 人員管理</h3>
                 <p style="color: #666; margin-bottom: 15px;">修改名字與密碼、停用離職人員、新增新進人員（所有裝置同步生效）</p>
                 <div id="staffManageList" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px;"></div>
@@ -799,7 +873,7 @@
                 </div>
             </div>
 
-            <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
+            <div data-page="data" style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 30px;">
                 <h3>📊 工作數據導出</h3>
                 <p style="color: #666; margin-bottom: 15px;">導出所有工作詳情，包含接案時間、完成時間、耗時等</p>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
@@ -808,10 +882,13 @@
                 </div>
             </div>
 
-            <div style="background: #fff3f3; padding: 20px; border-radius: 8px; margin-top: 30px; border: 1px solid #f5c6cb;">
+            <div data-page="data" style="background: #fff3f3; padding: 20px; border-radius: 8px; margin-top: 30px; border: 1px solid #f5c6cb;">
                 <h3>🧹 清除已完成工作</h3>
                 <p style="color: #666; margin-bottom: 15px;">會先自動下載 Excel 備份，再把所有生管的「完成」項目從看板移除（所有裝置同步生效）</p>
                 <button onclick="clearCompletedWorks()" class="submit-btn" style="background: #dc3545;">🧹 備份並清除已完成</button>
+            </div>
+
+            </div>
             </div>
         </div>
 
@@ -822,9 +899,13 @@
                 <button class="logout-btn" onclick="logout()">登出</button>
             </div>
 
-            <div id="viewerAlerts"></div>
+            <div class="view-layout">
+            <nav class="side-nav" id="viewerNav"></nav>
+            <div class="view-pages" id="viewerPages">
 
-            <div class="announcement-section">
+            <div id="viewerAlerts" data-page="home"></div>
+
+            <div class="announcement-section" data-page="announce">
                 <h3>📢 公布欄</h3>
                 <div id="viewerAnnouncementList"></div>
                 <div style="margin-top: 15px; border-top: 1px solid #ffd700; padding-top: 15px;">
@@ -841,7 +922,7 @@
                 </div>
             </div>
 
-            <div class="announcement-section" style="background: #eef5ff; border-color: #7fb3ff;">
+            <div class="announcement-section" data-page="ship" style="background: #eef5ff; border-color: #7fb3ff;">
                 <h3>🚚 近期出貨需求</h3>
                 <div id="viewerShipmentList"></div>
                 <div style="margin-top: 15px; border-top: 1px solid #7fb3ff; padding-top: 15px;">
@@ -853,9 +934,14 @@
                 </div>
             </div>
 
-            <input type="text" id="viewerSearch" placeholder="🔍 搜尋所有人的工作（名稱、備註、留言、進度）" oninput="viewerSearchQuery = this.value; renderDashboard('viewer');" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
+            <div data-page="board">
+                <input type="text" id="viewerSearch" placeholder="🔍 搜尋所有人的工作（名稱、備註、留言、進度）" oninput="viewerSearchQuery = this.value; renderDashboard('viewer');" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
 
-            <div class="dashboard-grid" id="viewerDashboardGrid"></div>
+                <div class="dashboard-grid" id="viewerDashboardGrid"></div>
+            </div>
+
+            </div>
+            </div>
         </div>
     </div>
 
@@ -1546,6 +1632,88 @@
             });
         }
 
+        // ===== 左側功能列（依身份權限顯示模組，點選切換頁面） =====
+        const NAV_PAGES = {
+            staff: [
+                { key: 'home', label: '🏠 主頁' },
+                { key: 'announce', label: '📢 公布欄' },
+                { key: 'ship', label: '🚚 出貨需求' },
+                { key: 'add', label: '➕ 新增工作' },
+                { key: 'works', label: '📋 我的工作' }
+            ],
+            manager: [
+                { key: 'home', label: '🏠 主頁' },
+                { key: 'announce', label: '📢 公布欄' },
+                { key: 'ship', label: '🚚 出貨需求' },
+                { key: 'assign', label: '📌 指派追蹤' },
+                { key: 'board', label: '🎯 戰情室' },
+                { key: 'staffmgr', label: '⚙️ 人員管理' },
+                { key: 'data', label: '📊 數據週報' }
+            ],
+            viewer: [
+                { key: 'home', label: '🏠 主頁' },
+                { key: 'announce', label: '📢 公布欄' },
+                { key: 'ship', label: '🚚 出貨需求' },
+                { key: 'board', label: '👑 全員總覽' }
+            ]
+        };
+        let currentPage = { staff: 'home', manager: 'home', viewer: 'home' };
+
+        // 主頁通知數（點名提醒＋指派/協助/主管注意警示，按「知道了」就會減少）
+        function homeAlertCount(view) {
+            try {
+                if (view === 'manager') {
+                    let n = annAlertsFor('christine').length;
+                    Object.keys(appData.works).forEach(u => (appData.works[u] || []).forEach(w => {
+                        if (w.flag === '主管注意' && w.status !== '完成') n++;
+                    }));
+                    return n;
+                }
+                if (view === 'viewer') return annAlertsFor('penny').length;
+                if (!currentUser) return 0;
+                let n = annAlertsFor(currentUser).length;
+                Object.keys(appData.works).forEach(u => (appData.works[u] || []).forEach(w => {
+                    if (w.flag === '隊友協助' && w.helper === currentUser && w.status !== '完成') n++;
+                }));
+                const readAssign = JSON.parse(localStorage.getItem('readAssignedWorks') || '[]');
+                n += (appData.works[currentUser] || []).filter(w => w.assignedBy && w.status !== '完成' && readAssign.indexOf(w.id) < 0).length;
+                return n;
+            } catch (e) { return 0; }
+        }
+
+        // 重繪功能列（主頁有未讀通知會顯示紅色數字）
+        function renderNav(view) {
+            const nav = document.getElementById(view + 'Nav');
+            if (!nav) return;
+            const count = homeAlertCount(view);
+            nav.innerHTML = NAV_PAGES[view].map(p => {
+                const active = currentPage[view] === p.key;
+                const badge = (p.key === 'home' && count > 0) ? `<span class="nav-badge">${count}</span>` : '';
+                return `<button class="nav-item${active ? ' active' : ''}" onclick="switchPage('${view}', '${p.key}')">${p.label}${badge}</button>`;
+            }).join('');
+        }
+
+        // 只顯示目前選到的模組，其餘隱藏
+        function applyPage(view) {
+            const box = document.getElementById(view + 'Pages');
+            if (box && box.querySelectorAll) {
+                box.querySelectorAll('[data-page]').forEach(el => {
+                    el.style.display = (el.getAttribute('data-page') === currentPage[view]) ? '' : 'none';
+                });
+            }
+            renderNav(view);
+        }
+
+        function switchPage(view, page) {
+            currentPage[view] = page;
+            applyPage(view);
+        }
+
+        // 主頁沒有通知時的提示
+        function emptyNoticeHtml() {
+            return '<div style="text-align: center; color: #8a8172; padding: 40px 10px; font-size: 15px;">🍵 目前沒有需要你注意的通知</div>';
+        }
+
         // 選擇身份
         function selectIdentity(identity) {
             if (isStaffDisabled(identity)) {
@@ -1592,19 +1760,25 @@
 
             if (user === 'christine') {
                 document.getElementById('managerView').classList.add('active');
+                currentPage.manager = 'home';
                 loadStaffNames();
                 renderDashboard();
                 loadAnnouncements('manager');
                 loadShipments('manager');
+                applyPage('manager');
             } else if (user === 'penny') {
                 document.getElementById('viewerView').classList.add('active');
+                currentPage.viewer = 'home';
                 renderDashboard('viewer');
                 loadAnnouncements('viewer');
                 loadShipments('viewer');
                 renderAlerts('viewer');
+                applyPage('viewer');
             } else {
                 document.getElementById('staffView').classList.add('active');
+                currentPage.staff = 'home';
                 renderStaffView(user);
+                applyPage('staff');
             }
         }
 
@@ -1635,7 +1809,8 @@
                 }
                 html += annAlertHtml('christine');
                 const el = document.getElementById('managerAlerts');
-                if (el) el.innerHTML = html;
+                if (el) el.innerHTML = html || emptyNoticeHtml();
+                renderNav('manager');
             } else if (view === 'staff') {
                 const items = [];
                 Object.keys(appData.works).forEach(u => {
@@ -1662,10 +1837,12 @@
 
                 html += annAlertHtml(user);
                 const el = document.getElementById('staffAlerts');
-                if (el) el.innerHTML = html;
+                if (el) el.innerHTML = html || emptyNoticeHtml();
+                renderNav('staff');
             } else if (view === 'viewer') {
                 const el = document.getElementById('viewerAlerts');
-                if (el) el.innerHTML = annAlertHtml('penny');
+                if (el) el.innerHTML = annAlertHtml('penny') || emptyNoticeHtml();
+                renderNav('viewer');
             }
         }
 
