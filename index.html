@@ -670,7 +670,7 @@
                             <option value="重要">重要</option>
                             <option value="緊急">緊急</option>
                         </select>
-                        <select id="staffAnnouncementNotify" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;"></select>
+                        <div id="staffAnnouncementNotify" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0; font-size: 13px;"></div>
                         <button onclick="postAnnounceAsStaff()" class="submit-btn" style="margin-top: 0; flex: 1;">發布</button>
                     </div>
                 </div>
@@ -762,7 +762,7 @@
                             <option value="重要">重要</option>
                             <option value="緊急">緊急</option>
                         </select>
-                        <select id="managerAnnouncementNotify" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;"></select>
+                        <div id="managerAnnouncementNotify" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0; font-size: 13px;"></div>
                         <button onclick="postAnnouncement('christine')" class="submit-btn" style="margin-top: 0; flex: 1;">發布</button>
                     </div>
                 </div>
@@ -835,7 +835,7 @@
                             <option value="重要">重要</option>
                             <option value="緊急">緊急</option>
                         </select>
-                        <select id="viewerAnnouncementNotify" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;"></select>
+                        <div id="viewerAnnouncementNotify" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0; font-size: 13px;"></div>
                         <button onclick="postAnnouncement('penny')" class="submit-btn" style="margin-top: 0; flex: 1;">發布</button>
                     </div>
                 </div>
@@ -1682,6 +1682,9 @@
             (Array.isArray(w.progress) ? w.progress : Object.values(w.progress || {})).forEach(p => {
                 if (p && p.text) parts.push(p.text);
             });
+            (Array.isArray(w.comments) ? w.comments : Object.values(w.comments || {})).forEach(c => {
+                if (c && c.text) parts.push(c.text);
+            });
             return parts.some(s => s && String(s).toLowerCase().indexOf(q) >= 0);
         }
 
@@ -1900,6 +1903,13 @@
                 }
             }
 
+            // 回覆串（主管與生管可互相回覆，一直疊加）
+            const workComments = (Array.isArray(work.comments) ? work.comments : Object.values(work.comments || {})).filter(c => c && c.text);
+            workComments.forEach(c => {
+                const delCmtBtn = (currentUser === 'christine' && c.cid) ? ` <button class="work-btn delete-btn" style="padding: 2px 8px; font-size: 11px;" onclick="deleteWorkComment('${owner}', '${work.id}', '${c.cid}')">刪除</button>` : '';
+                html += `<div class="work-note" style="background: #f7ece7; border-left: 3px solid #b0736a; padding: 4px 8px; margin-top: 4px; border-radius: 3px;">💬 ${c.time || ''}｜<strong>${c.author}</strong>：${c.text}${delCmtBtn}</div>`;
+            });
+
             // 顯示時間信息
             let timeInfo = '';
             if (work.createdAt) {
@@ -1946,13 +1956,124 @@
                 html += `<button class="work-btn delete-btn" onclick="deleteWork('${work.id}')">刪除</button>`;
             }
 
-            // 主管可對任何工作留言
+            // 任何登入者都可回覆這項工作（主管與生管來回討論）
+            if (currentUser) {
+                html += `<button class="work-btn" style="background: #b0736a; color: white;" onclick="addWorkComment('${owner}', '${work.id}')">💬 回覆</button>`;
+            }
+
+            // 主管可對任何工作留言、轉派給其他生管
             if (currentUser === 'christine') {
                 html += `<button class="work-btn" style="background: #f0ad4e; color: white;" onclick="editManagerNote('${work.id}')">👑 留言</button>`;
+                html += `<button class="work-btn" style="background: #6f8ba0; color: white;" onclick="transferWork('${owner}', '${work.id}')">🔁 轉派</button>`;
             }
 
             html += `</div></div>`;
             return html;
+        }
+
+        // 工作回覆：在工作卡上追加一則回覆，可一直疊加（任何登入者皆可）
+        function addWorkComment(owner, workId) {
+            if (!currentUser) return;
+            const work = (appData.works[owner] || []).find(w => w.id === workId);
+            if (!work) return;
+
+            openInputModal('💬 回覆這項工作', '', function(text) {
+                if (!text.trim()) return;
+                if (!Array.isArray(work.comments)) work.comments = Object.values(work.comments || {});
+                work.comments.push({
+                    cid: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                    author: currentDisplayName(),
+                    text: text.trim(),
+                    time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                });
+                saveWorks(owner);
+                rerenderCurrentView();
+            });
+        }
+
+        // 刪除工作回覆（僅主管）
+        function deleteWorkComment(owner, workId, cid) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以刪除回覆');
+                return;
+            }
+            const work = (appData.works[owner] || []).find(w => w.id === workId);
+            if (!work) return;
+            if (!confirm('確定要刪除這則回覆嗎？')) return;
+            const comments = Array.isArray(work.comments) ? work.comments : Object.values(work.comments || {});
+            work.comments = comments.filter(c => c && c.cid !== cid);
+            saveWorks(owner);
+            rerenderCurrentView();
+        }
+
+        // 轉派：主管把工作移給另一位生管（原人員列表移除，新人員收到指派警示）
+        function transferWork(owner, workId) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以轉派');
+                return;
+            }
+            const work = (appData.works[owner] || []).find(w => w.id === workId);
+            if (!work) return;
+
+            const keys = Object.keys(staffNames).filter(k => k !== owner && !isStaffDisabled(k));
+            if (keys.length === 0) {
+                alert('沒有可以轉派的人員');
+                return;
+            }
+
+            let html = keys.map(k => `<button class="submit-btn" style="width: 100%; margin: 0;" onclick="confirmTransferWork('${owner}', '${workId}', '${k}')">👩‍💼 ${staffNames[k]}</button>`).join('');
+            html += `<button class="cancel-btn" style="width: 100%; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="document.getElementById('notifyModal').classList.remove('active')">取消</button>`;
+            const title = document.querySelector('#notifyModal h3');
+            if (title) title.textContent = `🔁 「${work.title}」要轉派給誰？`;
+            document.getElementById('notifyModalButtons').innerHTML = html;
+            document.getElementById('notifyModal').classList.add('active');
+        }
+
+        // 確認轉派：搬移工作、狀態回等待中、清舊接案記錄，新人員會收到指派警示
+        function confirmTransferWork(owner, workId, target) {
+            document.getElementById('notifyModal').classList.remove('active');
+            if (currentUser !== 'christine') return;
+            const list = appData.works[owner] || [];
+            const work = list.find(w => w.id === workId);
+            if (!work || target === owner) return;
+
+            // 從原人員移除
+            appData.works[owner] = list.filter(w => w.id !== workId);
+
+            // 未完成的工作轉派後回到等待中、碼表暫停，讓新人員重新接案
+            if (work.status !== '完成') {
+                if (work.workingSince) {
+                    const seg = parseZhDate(work.workingSince) || new Date(work.workingSince);
+                    if (!isNaN(seg.getTime())) {
+                        work.accumMs = (work.accumMs || 0) + Math.max(0, Date.now() - seg.getTime());
+                    }
+                    delete work.workingSince;
+                }
+                work.status = '等待中';
+            }
+
+            // 清掉舊的接案確認，追蹤看板才會等新人員重新接案
+            if (work.progress) {
+                const plist = Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {});
+                work.progress = plist.filter(p => p && p.text !== '已確認接案');
+            }
+
+            work.assignedBy = 'Christine';
+            if (!Array.isArray(work.comments)) work.comments = Object.values(work.comments || {});
+            work.comments.push({
+                cid: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                author: 'Christine',
+                text: `🔁 已由 ${staffNames[owner] || owner} 轉派給 ${staffNames[target] || target}`,
+                time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+            });
+
+            if (!appData.works[target]) appData.works[target] = [];
+            appData.works[target].push(work);
+
+            saveWorks(owner);
+            saveWorks(target);
+            rerenderCurrentView();
+            alert(`✅ 已轉派給 ${staffNames[target]}，對方會收到警示通知`);
         }
 
         // 主管留言（新增/修改，清空內容即刪除留言）
@@ -2050,6 +2171,7 @@
                         '備註': work.note || '',
                         '主管留言': work.managerNote || '',
                         '進度記錄': (Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {})).map(p => `[${p.time}] ${p.text}`).join('\n'),
+                        '回覆串': (Array.isArray(work.comments) ? work.comments : Object.values(work.comments || {})).filter(c => c && c.text).map(c => `[${c.time}] ${c.author}: ${c.text}`).join('\n'),
                         '特別標記': work.flag === '主管注意' ? '需主管注意' : work.flag === '隊友協助' ? `需${staffNames[work.helper] || '隊友'}協助` : ''
                     });
                 });
@@ -2079,6 +2201,7 @@
                 { wch: 30 },  // 備註
                 { wch: 30 },  // 主管留言
                 { wch: 40 },  // 進度記錄
+                { wch: 40 },  // 回覆串
                 { wch: 15 }   // 特別標記
             ];
 
@@ -2528,7 +2651,7 @@
             const text = document.getElementById(textareaId).value;
             const importance = document.getElementById(importanceId).value;
             const notifyId = viewType === 'manager' ? 'managerAnnouncementNotify' : 'viewerAnnouncementNotify';
-            const notify = document.getElementById(notifyId).value;
+            const notify = getNotifyChecked(notifyId);
 
             if (!text.trim()) {
                 alert('請輸入訊息');
@@ -2552,14 +2675,14 @@
             saveAnnouncements();
             document.getElementById(textareaId).value = '';
             document.getElementById(importanceId).value = '普通';
-            document.getElementById(notifyId).value = '';
+            clearNotifyChecked(notifyId);
             loadAnnouncements(viewType);
         }
 
         function postAnnounceAsStaff() {
             const text = document.getElementById('staffAnnouncement').value;
             const importance = document.getElementById('staffAnnouncementImportance').value;
-            const notify = document.getElementById('staffAnnouncementNotify').value;
+            const notify = getNotifyChecked('staffAnnouncementNotify');
 
             if (!text.trim()) {
                 alert('請輸入訊息');
@@ -2583,7 +2706,7 @@
             saveAnnouncements();
             document.getElementById('staffAnnouncement').value = '';
             document.getElementById('staffAnnouncementImportance').value = '普通';
-            document.getElementById('staffAnnouncementNotify').value = '';
+            clearNotifyChecked('staffAnnouncementNotify');
             loadAnnouncements('staff');
         }
 
@@ -2599,22 +2722,50 @@
             return displayNameOf(currentUser);
         }
 
-        // 填入「提醒對象」下拉選單（帶入最新的人員名字，排除自己）
+        // 提醒對象欄位：舊資料是單一 key，新資料可為逗號分隔多人，統一轉成陣列
+        function notifyList(v) {
+            if (!v) return [];
+            if (Array.isArray(v)) return v.filter(Boolean);
+            return String(v).split(',').filter(Boolean);
+        }
+
+        // 提醒對象的顯示名稱（多人用「、」串起來）
+        function notifyNames(v) {
+            return notifyList(v).map(displayNameOf).join('、');
+        }
+
+        // 填入「提醒對象」勾選列（可複選；帶入最新的人員名字，排除自己）
         function populateNotifySelects() {
             const ids = ['staffAnnouncementNotify', 'managerAnnouncementNotify', 'viewerAnnouncementNotify'];
             const keys = ['christine'].concat(allStaffKeys(), ['penny']).filter(k => !isStaffDisabled(k));
             ids.forEach(id => {
-                const sel = document.getElementById(id);
-                if (!sel) return;
-                const cur = sel.value;
-                let opts = '<option value="">提醒對象：無</option>';
+                const box = document.getElementById(id);
+                if (!box) return;
+                // 重建前先記住已勾的人，雲端同步重繪時不會弄丟勾選
+                const checked = {};
+                box.querySelectorAll('input[type="checkbox"]').forEach(cb => { if (cb.checked) checked[cb.value] = true; });
+                let html = '<span style="color: #8a8172; white-space: nowrap;">📣 提醒：</span>';
                 keys.forEach(k => {
                     if (k === currentUser) return;
-                    opts += `<option value="${k}">📣 ${displayNameOf(k)}</option>`;
+                    html += `<label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer; white-space: nowrap;"><input type="checkbox" value="${k}"${checked[k] ? ' checked' : ''}>${displayNameOf(k)}</label>`;
                 });
-                sel.innerHTML = opts;
-                sel.value = cur || '';
+                box.innerHTML = html;
             });
+        }
+
+        // 讀取已勾選的提醒對象（逗號分隔字串，空字串 = 不提醒）
+        function getNotifyChecked(id) {
+            const box = document.getElementById(id);
+            if (!box || !box.querySelectorAll) return '';
+            const vals = [];
+            box.querySelectorAll('input[type="checkbox"]').forEach(cb => { if (cb.checked) vals.push(cb.value); });
+            return vals.join(',');
+        }
+
+        // 清空勾選
+        function clearNotifyChecked(id) {
+            const box = document.getElementById(id);
+            if (box && box.querySelectorAll) box.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
         }
 
         // 回覆公告：輸入內容後跳出選人視窗（按按鈕選擇提醒對象）
@@ -2633,15 +2784,29 @@
             });
         }
 
-        // 回覆輸入完成後，跳出選人視窗
+        // 回覆輸入完成後，跳出選人視窗（可勾選多人）
         function showReplyNotifyPicker(annId, text, parentRid) {
             pendingReply = { annId: annId, text: text, replyTo: parentRid || null };
 
             const keys = ['christine'].concat(allStaffKeys(), ['penny']).filter(k => k !== currentUser && !isStaffDisabled(k));
-            let btns = keys.map(k => `<button class="submit-btn" style="width: 100%; margin: 0;" onclick="finishReply('${k}')">📣 ${displayNameOf(k)}</button>`).join('');
-            btns += `<button class="cancel-btn" style="width: 100%; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="finishReply('')">不提醒，直接送出</button>`;
-            document.getElementById('notifyModalButtons').innerHTML = btns;
+            let html = '<div style="text-align: left; display: flex; flex-direction: column; gap: 8px; max-height: 40vh; overflow-y: auto;">';
+            keys.forEach(k => {
+                html += `<label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" class="reply-notify-cb" value="${k}">📣 ${displayNameOf(k)}</label>`;
+            });
+            html += '</div>';
+            html += `<button class="submit-btn" style="width: 100%; margin: 12px 0 0;" onclick="finishReplyPicked()">送出（沒勾人 = 不提醒）</button>`;
+            html += `<button class="cancel-btn" style="width: 100%; margin-top: 8px; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="pendingReply = null; document.getElementById('notifyModal').classList.remove('active')">取消</button>`;
+            const title = document.querySelector('#notifyModal h3');
+            if (title) title.textContent = '要提醒誰看這則回覆？（可複選）';
+            document.getElementById('notifyModalButtons').innerHTML = html;
             document.getElementById('notifyModal').classList.add('active');
+        }
+
+        // 收集勾選的人送出回覆
+        function finishReplyPicked() {
+            const vals = [];
+            document.querySelectorAll('#notifyModalButtons .reply-notify-cb').forEach(cb => { if (cb.checked) vals.push(cb.value); });
+            finishReply(vals.join(','));
         }
 
         // 完成回覆（notify 為空字串代表不提醒）
@@ -2729,12 +2894,12 @@
             const items = [];
             appData.announcements.forEach(a => {
                 if (a.closed) return; // 已結案的公告不再提醒
-                if (a.notify === identity && readIds.indexOf(a.id) < 0) {
+                if (notifyList(a.notify).indexOf(identity) >= 0 && readIds.indexOf(a.id) < 0) {
                     items.push({ id: a.id, author: a.author, text: a.text });
                 }
                 const replies = Array.isArray(a.replies) ? a.replies : Object.values(a.replies || {});
                 replies.forEach((r, idx) => {
-                    if (r && r.notify === identity) {
+                    if (r && notifyList(r.notify).indexOf(identity) >= 0) {
                         const rid = r.rid ? a.id + '_' + r.rid : a.id + '_r' + idx;
                         if (readIds.indexOf(rid) < 0) {
                             items.push({ id: rid, author: r.author, text: `回覆「${a.text}」：${r.text}` });
@@ -2792,7 +2957,7 @@
                 const list = byParent[parentKey] || [];
                 let h = '';
                 list.forEach(({ r, idx }) => {
-                    const replyNotify = r.notify ? ` <span style="background: #f0ad4e; color: white; padding: 1px 6px; border-radius: 8px; font-size: 11px; white-space: nowrap;">📣 ${displayNameOf(r.notify)}</span>` : '';
+                    const replyNotify = r.notify ? ` <span style="background: #f0ad4e; color: white; padding: 1px 6px; border-radius: 8px; font-size: 11px; white-space: nowrap;">📣 ${notifyNames(r.notify)}</span>` : '';
                     const editedTag = r.edited ? ` <span style="color: #bbb; font-size: 11px;">（已編輯）</span>` : '';
                     const canEdit = r.rid && (currentUser === 'christine' || r.author === currentDisplayName());
                     const editBtn = canEdit ? ` <button class="work-btn" style="padding: 2px 8px; font-size: 11px; background: #7a8663; color: white;" onclick="editReply('${annId}', '${r.rid}')">編輯</button>` : '';
@@ -2818,7 +2983,7 @@
                     : `<button class="work-btn" style="background: #28a745; color: white;" onclick="closeAnnouncement('${ann.id}')">結案</button>`)
                 : '';
             const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" onclick="deleteAnnouncement('${ann.id}')">刪除</button>` : '';
-            const notifyBadge = ann.notify ? ` <span style="background: #f0ad4e; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📣 提醒 ${displayNameOf(ann.notify)}</span>` : '';
+            const notifyBadge = ann.notify ? ` <span style="background: #f0ad4e; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📣 提醒 ${notifyNames(ann.notify)}</span>` : '';
             const closedBadge = ann.closed ? ` <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">✅ 已結案${ann.closedAt ? ' ' + ann.closedAt : ''}</span>` : '';
             const dim = ann.closed ? ' opacity: 0.6;' : '';
 
