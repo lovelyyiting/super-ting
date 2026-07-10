@@ -4340,7 +4340,19 @@
             loadShipments(currentView);
         }
 
-        // 顯示出貨需求（依日期排序；預設只展開一週內，之後的收合）
+        // 切換「已結案的出貨」收合
+        function toggleClosedShipments() {
+            const key = 'shipments|closed';
+            const cur = (key in collapsedSections) ? collapsedSections[key] : true;
+            collapsedSections[key] = !cur;
+            localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
+
+            const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                              document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+            loadShipments(currentView);
+        }
+
+        // 顯示出貨需求（依日期排序；預設只展開一週內，之後的收合；已結案收在最後）
         function loadShipments(view) {
             const shipments = appData.shipments.slice();
             shipments.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
@@ -4349,8 +4361,10 @@
             today.setHours(0, 0, 0, 0);
             const withinWeek = [];
             const later = [];
+            const closedList = [];
 
             shipments.forEach(ship => {
+                if (ship.closed) { closedList.push(ship); return; }
                 const d = ship.date ? new Date(ship.date + 'T00:00:00') : null;
                 const diff = d && !isNaN(d.getTime()) ? Math.round((d - today) / 86400000) : Infinity;
                 (diff <= 7 ? withinWeek : later).push(ship);
@@ -4358,7 +4372,7 @@
 
             let html = '';
             withinWeek.forEach(ship => { html += renderShipmentItem(ship); });
-            if (withinWeek.length === 0 && later.length > 0) {
+            if (withinWeek.length === 0 && (later.length > 0 || closedList.length > 0)) {
                 html += '<p style="color: #999;">一週內沒有出貨</p>';
             }
 
@@ -4368,6 +4382,16 @@
                 html += `<div style="cursor: pointer; user-select: none; color: #666; font-weight: bold; padding: 8px 0; border-top: 1px dashed #aaa; margin-top: 8px;" onclick="toggleLaterShipments()">${collapsed ? '▶' : '▼'} 一週後的出貨 (${later.length})</div>`;
                 if (!collapsed) {
                     later.forEach(ship => { html += renderShipmentItem(ship); });
+                }
+            }
+
+            // 已結案的收在最後一列，點擊展開/收起（預設收合）
+            if (closedList.length > 0) {
+                const key = 'shipments|closed';
+                const collapsed = (key in collapsedSections) ? collapsedSections[key] : true;
+                html += `<div style="cursor: pointer; user-select: none; color: #666; font-weight: bold; padding: 8px 0; border-top: 1px dashed #aaa; margin-top: 8px;" onclick="toggleClosedShipments()">${collapsed ? '▶' : '▼'} ✅ 已結案的出貨 (${closedList.length})</div>`;
+                if (!collapsed) {
+                    closedList.forEach(ship => { html += renderShipmentItem(ship); });
                 }
             }
 
