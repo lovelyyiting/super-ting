@@ -789,7 +789,7 @@
                 <h3>💬 聊天室</h3>
                 <div id="staffChatList" class="chat-list"></div>
                 <div style="display: flex; gap: 10px; margin-top: 12px;">
-                    <input type="text" id="staffChatInput" placeholder="說點什麼..." style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" onkeypress="if(event.key==='Enter') sendChatMessage('staff')">
+                    <textarea id="staffChatInput" placeholder="說點什麼...（Enter 換行，按送出鍵送出）" rows="2" style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; resize: vertical; font-family: inherit; font-size: 14px;"></textarea>
                     <button onclick="sendChatMessage('staff')" class="submit-btn" style="margin-top: 0;">送出</button>
                 </div>
             </div>
@@ -903,7 +903,7 @@
                 <h3>💬 聊天室</h3>
                 <div id="managerChatList" class="chat-list"></div>
                 <div style="display: flex; gap: 10px; margin-top: 12px;">
-                    <input type="text" id="managerChatInput" placeholder="說點什麼..." style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" onkeypress="if(event.key==='Enter') sendChatMessage('manager')">
+                    <textarea id="managerChatInput" placeholder="說點什麼...（Enter 換行，按送出鍵送出）" rows="2" style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; resize: vertical; font-family: inherit; font-size: 14px;"></textarea>
                     <button onclick="sendChatMessage('manager')" class="submit-btn" style="margin-top: 0;">送出</button>
                 </div>
             </div>
@@ -1006,7 +1006,7 @@
                 <h3>💬 聊天室</h3>
                 <div id="viewerChatList" class="chat-list"></div>
                 <div style="display: flex; gap: 10px; margin-top: 12px;">
-                    <input type="text" id="viewerChatInput" placeholder="說點什麼..." style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" onkeypress="if(event.key==='Enter') sendChatMessage('viewer')">
+                    <textarea id="viewerChatInput" placeholder="說點什麼...（Enter 換行，按送出鍵送出）" rows="2" style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; resize: vertical; font-family: inherit; font-size: 14px;"></textarea>
                     <button onclick="sendChatMessage('viewer')" class="submit-btn" style="margin-top: 0;">送出</button>
                 </div>
             </div>
@@ -1872,7 +1872,7 @@
                 el.innerHTML = msgs.map(m => {
                     const mine = m.author === currentDisplayName();
                     const delBtn = currentUser === 'christine' ? ` <span style="color: #c99a8f; cursor: pointer;" onclick="deleteChatMessage('${m.id}')">刪除</span>` : '';
-                    return `<div class="chat-msg${mine ? ' mine' : ''}"><div class="chat-meta">${m.author}｜${m.time || ''}${delBtn}</div>${m.text}</div>`;
+                    return `<div class="chat-msg${mine ? ' mine' : ''}"><div class="chat-meta">${m.author}｜${m.time || ''}${delBtn}</div><div style="white-space: pre-wrap;">${m.text}</div></div>`;
                 }).join('');
             }
             el.scrollTop = el.scrollHeight;
