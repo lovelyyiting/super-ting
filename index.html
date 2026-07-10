@@ -1240,7 +1240,9 @@
             // 人員狀態：有空 / 在忙勿擾（選填）
             staffStatus: {},
             // 主管私人待辦清單（每筆獨立節點，只在主管畫面顯示）
-            managerTodos: []
+            managerTodos: [],
+            // 被刪除的指派工作（等主管結案或重新指派，每筆獨立節點）
+            deletedAssigns: {}
         };
 
         function normalizeStaffSettings(v) {
@@ -1306,6 +1308,7 @@
             appData.chat = JSON.parse(localStorage.getItem('chat') || '[]');
             appData.staffStatus = JSON.parse(localStorage.getItem('staffStatus') || '{}');
             appData.managerTodos = JSON.parse(localStorage.getItem('managerTodos') || '[]');
+            appData.deletedAssigns = JSON.parse(localStorage.getItem('deletedAssigns') || '{}');
             loadStaffNames();
 
             if (!db) {
@@ -1433,6 +1436,11 @@
                 const v = snap.val();
                 appData.managerTodos = v ? Object.values(v).filter(Boolean) : [];
                 localStorage.setItem('managerTodos', JSON.stringify(appData.managerTodos));
+                rerenderCurrentView();
+            });
+            db.ref('deletedAssigns').on('value', snap => {
+                appData.deletedAssigns = snap.val() || {};
+                localStorage.setItem('deletedAssigns', JSON.stringify(appData.deletedAssigns));
                 rerenderCurrentView();
             });
         }
@@ -2315,6 +2323,15 @@
                         items.map(i => `<div style="color: #721c24; font-size: 14px; margin-top: 5px;">・${staffNames[i.owner] || i.owner}：${i.work.title}（${i.work.status}）</div>`).join('') +
                     `</div>`;
                 }
+                // 指派工作被刪除的通知（處理完成前一直顯示）
+                const delAssigns = Object.keys(appData.deletedAssigns || {}).map(k => appData.deletedAssigns[k]).filter(Boolean);
+                if (delAssigns.length > 0) {
+                    html += `<div style="background: #fdf0f0; border: 1px solid #dc3545; border-radius: 8px; padding: 12px 15px; margin-bottom: 15px;">
+                        <strong style="color: #a02030;">🗑️ 有 ${delAssigns.length} 件指派的工作被刪除，等你處理</strong>` +
+                        delAssigns.map(d => `<div style="color: #a02030; font-size: 14px; margin-top: 5px;">・${d.deletedBy} 刪除了「${d.work && d.work.title || ''}」（${d.deletedAt || ''}）→ 請到「指派追蹤」選擇結案或重新指派</div>`).join('') +
+                    `</div>`;
+                }
+
                 html += annAlertHtml('christine');
                 html += chatAlertHtml('manager');
                 const el = document.getElementById('managerAlerts');
@@ -3125,11 +3142,101 @@
 
         // 刪除工作
         function deleteWork(workId) {
-            if (confirm('確定要刪除這項工作嗎？')) {
-                appData.works[currentUser] = (appData.works[currentUser] || []).filter(w => w.id !== workId);
-                saveWorks(currentUser);
-                renderStaffView(currentUser);
+            const work = (appData.works[currentUser] || []).find(w => w.id === workId);
+            if (!work) return;
+
+            const isAssigned = !!work.assignedBy;
+            const msg = isAssigned
+                ? '這是主管指派的工作，刪除後主管會收到通知，並由主管決定結案或重新指派。\n\n確定要刪除嗎？'
+                : '確定要刪除這項工作嗎？';
+            if (!confirm(msg)) return;
+
+            appData.works[currentUser] = (appData.works[currentUser] || []).filter(w => w.id !== workId);
+
+            // 主管指派的工作：留下刪除記錄，讓主管在指派追蹤處理
+            if (isAssigned) {
+                const tomb = {
+                    work: JSON.parse(JSON.stringify(work)),
+                    ownerKey: currentUser,
+                    deletedBy: currentDisplayName(),
+                    deletedAt: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                };
+                appData.deletedAssigns[work.id] = tomb;
+                localStorage.setItem('deletedAssigns', JSON.stringify(appData.deletedAssigns));
+                if (db) db.ref('deletedAssigns/' + work.id).set(tomb).catch(e => console.log('雲端儲存失敗', e));
             }
+
+            saveWorks(currentUser);
+            renderStaffView(currentUser);
+        }
+
+        // 主管結案被刪除的指派（同意刪除，從追蹤移除）
+        function closeDeletedAssign(id) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以結案');
+                return;
+            }
+            const d = appData.deletedAssigns[id];
+            if (!d) return;
+            if (!confirm(`確定結案「${d.work.title}」？結案後將從指派追蹤移除。`)) return;
+
+            delete appData.deletedAssigns[id];
+            localStorage.setItem('deletedAssigns', JSON.stringify(appData.deletedAssigns));
+            if (db) db.ref('deletedAssigns/' + id).remove().catch(e => console.log('雲端儲存失敗', e));
+            rerenderCurrentView();
+        }
+
+        // 主管重新指派被刪除的工作（選人重發）
+        function reassignDeleted(id) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以重新指派');
+                return;
+            }
+            const d = appData.deletedAssigns[id];
+            if (!d) return;
+
+            const keys = Object.keys(staffNames).filter(k => !isStaffDisabled(k));
+            let html = keys.map(k => `<button class="submit-btn" style="width: 100%; margin: 0;" onclick="confirmReassignDeleted('${id}', '${k}')">👩‍💼 ${staffNames[k]}</button>`).join('');
+            html += `<button class="cancel-btn" style="width: 100%; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="document.getElementById('notifyModal').classList.remove('active')">取消</button>`;
+            const title = document.querySelector('#notifyModal h3');
+            if (title) title.textContent = `🔁 「${d.work.title}」要重新指派給誰？`;
+            document.getElementById('notifyModalButtons').innerHTML = html;
+            document.getElementById('notifyModal').classList.add('active');
+        }
+
+        function confirmReassignDeleted(id, target) {
+            document.getElementById('notifyModal').classList.remove('active');
+            if (currentUser !== 'christine') return;
+            const d = appData.deletedAssigns[id];
+            if (!d) return;
+
+            const work = JSON.parse(JSON.stringify(d.work));
+            work.status = '等待中';
+            delete work.completedAt;
+            delete work.workingSince;
+            work.assignedBy = 'Christine';
+            if (work.progress) {
+                const plist = Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {});
+                work.progress = plist.filter(p => p && p.text !== '已確認接案');
+            }
+            if (!Array.isArray(work.comments)) work.comments = Object.values(work.comments || {});
+            work.comments.push({
+                cid: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                author: 'Christine',
+                text: `🔁 重新指派給 ${staffNames[target] || target}（原被 ${d.deletedBy} 刪除）`,
+                time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+            });
+
+            if (!appData.works[target]) appData.works[target] = [];
+            appData.works[target].push(work);
+            saveWorks(target);
+
+            delete appData.deletedAssigns[id];
+            localStorage.setItem('deletedAssigns', JSON.stringify(appData.deletedAssigns));
+            if (db) db.ref('deletedAssigns/' + id).remove().catch(e => console.log('雲端儲存失敗', e));
+
+            rerenderCurrentView();
+            alert(`✅ 已重新指派給 ${staffNames[target]}，對方會收到警示通知`);
         }
 
         // 通用輸入視窗
@@ -3300,7 +3407,8 @@
                 return;
             }
 
-            if (items.length === 0) {
+            const tombCount = Object.keys(appData.deletedAssigns || {}).length;
+            if (items.length === 0 && tombCount === 0) {
                 el.innerHTML = '<p style="color: #999;">目前沒有指派的工作</p>';
                 return;
             }
@@ -3365,8 +3473,29 @@
             }
 
             let html = '';
+
+            // 被人員刪除的指派：紅色待處理項排最上面，由主管決定結案或重新指派
+            const tombs = Object.keys(appData.deletedAssigns || {}).map(k => appData.deletedAssigns[k]).filter(d => d && d.work);
+            tombs.forEach(d => {
+                const actionBtns = currentUser === 'christine'
+                    ? `<button class="work-btn" style="background: #6f8ba0; color: white;" onclick="reassignDeleted('${d.work.id}')">🔁 重新指派</button>
+                       <button class="work-btn" style="background: #28a745; color: white;" onclick="closeDeletedAssign('${d.work.id}')">✔ 結案</button>`
+                    : '';
+                html += `<div class="announcement-item" style="border: 1px solid #dc3545; background: #fdf0f0;">
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <strong>${staffNames[d.ownerKey] || d.deletedBy}</strong>
+                            <span style="text-decoration: line-through; color: #888;">${d.work.title}</span>
+                            <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">🗑️ 已被 ${d.deletedBy} 刪除 ${d.deletedAt || ''}</span>
+                        </div>
+                        <div class="announcement-time">指派時間: ${d.work.createdAt || ''}${d.work.note ? '｜備註: ' + d.work.note : ''}</div>
+                    </div>
+                    <div style="display: flex; gap: 5px; margin-left: auto;">${actionBtns}</div>
+                </div>`;
+            });
+
             openItems.forEach(item => { html += buildAssignItem(item); });
-            if (openItems.length === 0) {
+            if (openItems.length === 0 && tombs.length === 0) {
                 html += '<p style="color: #999;">沒有未結案的指派工作</p>';
             }
 
