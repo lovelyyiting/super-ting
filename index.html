@@ -787,6 +787,9 @@
 
             <div class="announcement-section" data-page="chat" style="background: #f0f2ec; border-color: #b9c4a5;">
                 <h3>💬 聊天室</h3>
+                <div style="margin-bottom: 10px;">
+                    <button onclick="exportChat()" class="submit-btn" style="margin-top: 0; background: #17a2b8;">📥 匯出 Excel</button>
+                </div>
                 <div id="staffChatList" class="chat-list"></div>
                 <div style="display: flex; gap: 10px; margin-top: 12px;">
                     <textarea id="staffChatInput" placeholder="說點什麼...（Enter 換行，按送出鍵送出）" rows="2" style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; resize: vertical; font-family: inherit; font-size: 14px;"></textarea>
@@ -901,6 +904,10 @@
 
             <div class="announcement-section" data-page="chat" style="background: #f0f2ec; border-color: #b9c4a5;">
                 <h3>💬 聊天室</h3>
+                <div style="margin-bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button onclick="exportChat()" class="submit-btn" style="margin-top: 0; background: #17a2b8;">📥 匯出 Excel</button>
+                    <button onclick="clearChat()" class="submit-btn" style="margin-top: 0; background: #dc3545;">🧹 匯出並清空</button>
+                </div>
                 <div id="managerChatList" class="chat-list"></div>
                 <div style="display: flex; gap: 10px; margin-top: 12px;">
                     <textarea id="managerChatInput" placeholder="說點什麼...（Enter 換行，按送出鍵送出）" rows="2" style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; resize: vertical; font-family: inherit; font-size: 14px;"></textarea>
@@ -1004,6 +1011,9 @@
 
             <div class="announcement-section" data-page="chat" style="background: #f0f2ec; border-color: #b9c4a5;">
                 <h3>💬 聊天室</h3>
+                <div style="margin-bottom: 10px;">
+                    <button onclick="exportChat()" class="submit-btn" style="margin-top: 0; background: #17a2b8;">📥 匯出 Excel</button>
+                </div>
                 <div id="viewerChatList" class="chat-list"></div>
                 <div style="display: flex; gap: 10px; margin-top: 12px;">
                     <textarea id="viewerChatInput" placeholder="說點什麼...（Enter 換行，按送出鍵送出）" rows="2" style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; resize: vertical; font-family: inherit; font-size: 14px;"></textarea>
@@ -1063,6 +1073,18 @@
             <div style="display: flex; gap: 10px; margin-top: 15px;">
                 <button class="submit-btn" style="flex: 1; margin: 0;" onclick="confirmShipDate()">確認</button>
                 <button class="cancel-btn" style="flex: 1; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="closeShipDateModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 看板項目編輯視窗（異常物料 / 重工維護共用） -->
+    <div id="boardEditModal" class="password-modal">
+        <div class="password-box" style="text-align: left;">
+            <h3 id="boardEditTitle" style="text-align: center;">✏️ 修改項目</h3>
+            <div id="boardEditFields" style="margin-top: 15px;"></div>
+            <div style="display: flex; gap: 10px;">
+                <button class="submit-btn" style="flex: 1; margin: 0;" onclick="confirmBoardEdit()">儲存</button>
+                <button class="cancel-btn" style="flex: 1; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="closeBoardEditModal()">取消</button>
             </div>
         </div>
     </div>
@@ -1242,8 +1264,16 @@
             // 主管私人待辦清單（每筆獨立節點，只在主管畫面顯示）
             managerTodos: [],
             // 被刪除的指派工作（等主管結案或重新指派，每筆獨立節點）
-            deletedAssigns: {}
+            deletedAssigns: {},
+            // 通用看板：異常物料管理、近期重工管理維護（各為陣列，雲端同步）
+            boards: { material: [], rework: [] }
         };
+
+        // Firebase 會把陣列轉物件，讀回來統一轉回陣列（過濾空值）
+        function normBoardArr(v) {
+            if (!v) return [];
+            return Array.isArray(v) ? v.filter(Boolean) : Object.values(v).filter(Boolean);
+        }
 
         function normalizeStaffSettings(v) {
             v = v || {};
@@ -1309,6 +1339,8 @@
             appData.staffStatus = JSON.parse(localStorage.getItem('staffStatus') || '{}');
             appData.managerTodos = JSON.parse(localStorage.getItem('managerTodos') || '[]');
             appData.deletedAssigns = JSON.parse(localStorage.getItem('deletedAssigns') || '{}');
+            const cachedBoards = JSON.parse(localStorage.getItem('boards') || '{}');
+            appData.boards = { material: normBoardArr(cachedBoards.material), rework: normBoardArr(cachedBoards.rework) };
             loadStaffNames();
 
             if (!db) {
@@ -1443,6 +1475,12 @@
                 localStorage.setItem('deletedAssigns', JSON.stringify(appData.deletedAssigns));
                 rerenderCurrentView();
             });
+            db.ref('boards').on('value', snap => {
+                const v = snap.val() || {};
+                appData.boards = { material: normBoardArr(v.material), rework: normBoardArr(v.rework) };
+                localStorage.setItem('boards', JSON.stringify(appData.boards));
+                rerenderCurrentView();
+            });
         }
 
         // 儲存人員設定（本機 + 雲端）
@@ -1475,6 +1513,17 @@
             if (db) db.ref('shipments').set(appData.shipments).catch(e => console.log('雲端儲存失敗', e));
         }
 
+        // 儲存看板資料（本機 + 雲端）；指定 boardKey 只寫該看板節點
+        function saveBoards(boardKey) {
+            localStorage.setItem('boards', JSON.stringify(appData.boards));
+            if (!db) return;
+            if (boardKey) {
+                db.ref('boards/' + boardKey).set(appData.boards[boardKey] || []).catch(e => console.log('雲端儲存失敗', e));
+            } else {
+                db.ref('boards').set(appData.boards).catch(e => console.log('雲端儲存失敗', e));
+            }
+        }
+
         // 依目前開啟的畫面重新渲染（雲端資料變動時呼叫）
         function rerenderCurrentView() {
             if (document.getElementById('managerView').classList.contains('active')) {
@@ -1483,15 +1532,18 @@
                 loadShipments('manager');
                 renderChat('manager');
                 renderTodos();
+                renderAllBoards('manager');
             } else if (document.getElementById('viewerView').classList.contains('active')) {
                 renderDashboard('viewer');
                 loadAnnouncements('viewer');
                 loadShipments('viewer');
                 renderAlerts('viewer');
                 renderChat('viewer');
+                renderAllBoards('viewer');
             } else if (document.getElementById('staffView').classList.contains('active') && currentUser) {
                 renderStaffView(currentUser);
                 renderChat('staff');
+                renderAllBoards('staff');
             }
         }
 
@@ -1785,6 +1837,8 @@
                 { key: 'announce', label: '📢 公布欄' },
                 { key: 'ship', label: '🚚 出貨需求' },
                 { key: 'chat', label: '💬 聊天室' },
+                { key: 'material', label: '⚠️ 異常物料' },
+                { key: 'rework', label: '🔧 重工維護' },
                 { key: 'add', label: '➕ 新增工作' },
                 { key: 'works', label: '📋 我的工作' }
             ],
@@ -1793,6 +1847,8 @@
                 { key: 'announce', label: '📢 公布欄' },
                 { key: 'ship', label: '🚚 出貨需求' },
                 { key: 'chat', label: '💬 聊天室' },
+                { key: 'material', label: '⚠️ 異常物料' },
+                { key: 'rework', label: '🔧 重工維護' },
                 { key: 'todo', label: '📝 待辦清單' },
                 { key: 'assign', label: '📌 指派追蹤' },
                 { key: 'board', label: '🎯 戰情室' },
@@ -1804,6 +1860,8 @@
                 { key: 'announce', label: '📢 公布欄' },
                 { key: 'ship', label: '🚚 出貨需求' },
                 { key: 'chat', label: '💬 聊天室' },
+                { key: 'material', label: '⚠️ 異常物料' },
+                { key: 'rework', label: '🔧 重工維護' },
                 { key: 'board', label: '👑 全員總覽' }
             ]
         };
@@ -1835,7 +1893,7 @@
         function renderNav(view) {
             const nav = document.getElementById(view + 'Nav');
             if (!nav) return;
-            const counts = { home: homeAlertCount(view), chat: chatUnreadCount() };
+            const counts = { home: homeAlertCount(view), chat: chatUnreadCount(), material: boardRemindCount('material'), rework: boardRemindCount('rework') };
             nav.innerHTML = NAV_PAGES[view].map(p => {
                 const active = currentPage[view] === p.key;
                 const n = counts[p.key] || 0;
@@ -1933,6 +1991,33 @@
             appData.chat = (appData.chat || []).filter(m => m && m.id !== id);
             localStorage.setItem('chat', JSON.stringify(appData.chat));
             if (db) db.ref('chat/' + id).remove().catch(e => console.log('雲端儲存失敗', e));
+            rerenderCurrentView();
+        }
+
+        // 匯出聊天室訊息為 Excel（所有人皆可）
+        function exportChat() {
+            const msgs = (appData.chat || []).filter(Boolean).slice().sort((a, b) => chatTs(a.id) - chatTs(b.id));
+            if (msgs.length === 0) { alert('目前沒有聊天訊息'); return; }
+            const data = msgs.map(m => ({ '時間': m.time || '', '發話人': m.author || '', '內容': m.text || '' }));
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, '聊天室');
+            worksheet['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 60 }];
+            XLSX.writeFile(workbook, `聊天室紀錄_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.xlsx`);
+            return true;
+        }
+
+        // 匯出並一鍵清空聊天室（僅主管）：先下載 Excel 備份，再清空全部訊息
+        function clearChat() {
+            if (currentUser !== 'christine') { alert('只有主管可以清空聊天室'); return; }
+            const msgs = (appData.chat || []).filter(Boolean);
+            if (msgs.length === 0) { alert('目前沒有聊天訊息'); return; }
+            if (!confirm(`確定要清空全部 ${msgs.length} 則訊息嗎？系統會先下載 Excel 備份。`)) return;
+            exportChat();
+            appData.chat = [];
+            localStorage.setItem('chat', JSON.stringify(appData.chat));
+            if (db) db.ref('chat').remove().catch(e => console.log('雲端儲存失敗', e));
+            markChatSeen();
             rerenderCurrentView();
         }
 
@@ -2279,6 +2364,7 @@
                 loadShipments('manager');
                 renderChat('manager');
                 renderTodos();
+                renderAllBoards('manager');
                 applyPage('manager');
             } else if (user === 'penny') {
                 document.getElementById('viewerView').classList.add('active');
@@ -2288,12 +2374,14 @@
                 loadShipments('viewer');
                 renderAlerts('viewer');
                 renderChat('viewer');
+                renderAllBoards('viewer');
                 applyPage('viewer');
             } else {
                 document.getElementById('staffView').classList.add('active');
                 currentPage.staff = 'home';
                 renderStaffView(user);
                 renderChat('staff');
+                renderAllBoards('staff');
                 applyPage('staff');
             }
         }
@@ -3075,6 +3163,7 @@
         }
 
         window.addEventListener('load', function() {
+            injectBoardSections();
             initData();
             attachFormListener();
         });
@@ -4134,12 +4223,33 @@
             loadShipments(currentView);
         }
 
+        // 出貨需求結案 / 重啟（任何登入者皆可）
+        function toggleShipmentClose(shipId) {
+            if (!currentUser) return;
+            const ship = appData.shipments.find(s => s.id === shipId);
+            if (!ship) return;
+            if (ship.closed) {
+                ship.closed = false;
+                ship.closedBy = null; ship.closedAt = null;
+            } else {
+                ship.closed = true;
+                ship.closedBy = currentDisplayName();
+                ship.closedAt = new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            }
+            saveShipments();
+            const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                              document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+            loadShipments(currentView);
+        }
+
         // 單筆出貨需求顯示
         function renderShipmentItem(ship) {
             const badge = shipmentBadge(ship.date);
             const dateDisplay = ship.date ? ship.date.replace(/^\d{4}-/, '').replace('-', '/') : '';
-            const updateBtn = currentUser ? `<button class="work-btn" style="background: #7a8663; color: white;" onclick="addShipmentUpdate('${ship.id}')">更新</button>` : '';
-            const dateBtn = currentUser ? `<button class="work-btn" style="background: #6f8ba0; color: white;" onclick="editShipmentDate('${ship.id}')">📅 改日期</button>` : '';
+            const closed = !!ship.closed;
+            const updateBtn = currentUser && !closed ? `<button class="work-btn" style="background: #7a8663; color: white;" onclick="addShipmentUpdate('${ship.id}')">更新</button>` : '';
+            const dateBtn = currentUser && !closed ? `<button class="work-btn" style="background: #6f8ba0; color: white;" onclick="editShipmentDate('${ship.id}')">📅 改日期</button>` : '';
+            const closeBtn = currentUser ? `<button class="work-btn" style="background: ${closed ? '#f0ad4e' : '#28a745'}; color: white;" onclick="toggleShipmentClose('${ship.id}')">${closed ? '↩️ 重啟' : '✅ 結案'}</button>` : '';
             const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" onclick="deleteShipment('${ship.id}')">刪除</button>` : '';
 
             let updatesHtml = '';
@@ -4151,17 +4261,21 @@
                 }
             });
 
-            return `<div class="announcement-item">
+            const closedBadge = closed ? '<span style="background: #6c757d; color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap;">✅ 已結案</span>' : '';
+            const closedInfo = closed && ship.closedBy ? `<span style="color: #999; font-size: 11px;">・${ship.closedBy} 於 ${ship.closedAt || ''} 結案</span>` : '';
+
+            return `<div class="announcement-item" style="${closed ? 'opacity: 0.6;' : ''}">
                 <div style="flex: 1;">
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <span style="background: ${badge.color}; color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📅 ${dateDisplay} ${badge.text}</span>
+                        ${closedBadge}
                         <strong>${ship.text}</strong>
                     </div>
-                    <div class="announcement-author">📝 ${ship.author}</div>
+                    <div class="announcement-author">📝 ${ship.author} ${closedInfo}</div>
                     <div class="announcement-time">${ship.time}</div>
                     ${updatesHtml}
                 </div>
-                <div style="display: flex; gap: 5px; margin-left: auto;">${updateBtn}${dateBtn}${deleteBtn}</div>
+                <div style="display: flex; gap: 5px; margin-left: auto; flex-wrap: wrap; align-content: flex-start;">${updateBtn}${dateBtn}${closeBtn}${deleteBtn}</div>
             </div>`;
         }
 
@@ -4267,6 +4381,341 @@
             if (elementId) {
                 document.getElementById(elementId).innerHTML = html || '<p style="color: #999;">暫無出貨需求</p>';
             }
+        }
+
+        // ===== 通用看板：異常物料管理、近期重工管理維護 =====
+        // 兩個看板共用同一套引擎，只用設定檔區分欄位與外觀
+        const BOARD_CONFIG = {
+            material: {
+                title: '⚠️ 異常物料管理看板',
+                sheet: '異常物料',
+                bg: '#fff4e6', border: '#ffb066',
+                fields: [
+                    { key: 'part', label: '料號', ph: '料號' },
+                    { key: 'desc', label: '異常說明', ph: '異常說明 / 原因' },
+                    { key: 'qty', label: '數量', ph: '數量' }
+                ]
+            },
+            rework: {
+                title: '🔧 近期需重工管理維護',
+                sheet: '重工維護',
+                bg: '#eef7f0', border: '#7ec49a',
+                fields: [
+                    { key: 'part', label: '料號', ph: '料號' },
+                    { key: 'reason', label: '原因', ph: '重工原因' },
+                    { key: 'qty', label: '數量', ph: '數量' },
+                    { key: 'order', label: '工單', ph: '工單號' }
+                ]
+            }
+        };
+
+        // 顯示用的簡易跳脫，避免使用者輸入的角括號破壞版面
+        function boardEsc(s) {
+            return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // 取某看板的資料陣列（保證是陣列）
+        function boardItems(boardKey) {
+            const list = (appData.boards && appData.boards[boardKey]) || [];
+            return Array.isArray(list) ? list.filter(Boolean) : Object.values(list || {}).filter(Boolean);
+        }
+
+        // 待注意數（未結案且被標記提醒）＝ 功能列紅色數字
+        function boardRemindCount(boardKey) {
+            return boardItems(boardKey).filter(it => it.status !== 'closed' && it.remind).length;
+        }
+
+        // 產生單一看板區塊（清單 + 新增表單），data-page 讓左側切換顯示
+        function boardSectionHTML(view, boardKey) {
+            const cfg = BOARD_CONFIG[boardKey];
+            const inputs = cfg.fields.map(f =>
+                `<input type="text" id="${view}_${boardKey}_${f.key}" placeholder="${f.ph || f.label}" style="flex: 1; min-width: 110px; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">`
+            ).join('');
+            return `<div class="announcement-section" data-page="${boardKey}" style="background: ${cfg.bg}; border-color: ${cfg.border};">
+                <h3>${cfg.title}</h3>
+                <div style="margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button onclick="exportBoard('${boardKey}')" class="submit-btn" style="margin-top: 0; background: #17a2b8;">📥 匯出 Excel</button>
+                </div>
+                <div id="${view}_${boardKey}_list"></div>
+                <div style="margin-top: 15px; border-top: 1px solid ${cfg.border}; padding-top: 15px;">
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start;">
+                        ${inputs}
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+                        <input type="text" id="${view}_${boardKey}_note" placeholder="備註（可留空）" style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <button onclick="addBoardItem('${boardKey}', '${view}')" class="submit-btn" style="margin-top: 0;">新增</button>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // 開站時把兩個看板區塊注入三個視圖（所有人都看得到）
+        function injectBoardSections() {
+            ['staff', 'manager', 'viewer'].forEach(view => {
+                const box = document.getElementById(view + 'Pages');
+                if (!box) return;
+                ['material', 'rework'].forEach(boardKey => {
+                    if (document.getElementById(`${view}_${boardKey}_list`)) return; // 避免重複注入
+                    const wrap = document.createElement('div');
+                    wrap.innerHTML = boardSectionHTML(view, boardKey);
+                    box.appendChild(wrap.firstElementChild);
+                });
+            });
+        }
+
+        function renderAllBoards(view) {
+            renderBoard(view, 'material');
+            renderBoard(view, 'rework');
+            renderNav(view);
+        }
+
+        // 排序：未結案優先 → 提醒優先 → 新的在前
+        function boardSorted(boardKey) {
+            return boardItems(boardKey).slice().sort((a, b) => {
+                const ac = a.status === 'closed' ? 1 : 0, bc = b.status === 'closed' ? 1 : 0;
+                if (ac !== bc) return ac - bc;
+                const ar = a.remind && a.status !== 'closed' ? 0 : 1, br = b.remind && b.status !== 'closed' ? 0 : 1;
+                if (ar !== br) return ar - br;
+                return String(b.id).localeCompare(String(a.id));
+            });
+        }
+
+        function renderBoard(view, boardKey) {
+            const el = document.getElementById(`${view}_${boardKey}_list`);
+            if (!el) return;
+            const items = boardSorted(boardKey);
+            el.innerHTML = items.length ? items.map(it => renderBoardItem(boardKey, it)).join('') : '<p style="color: #999;">目前沒有項目</p>';
+        }
+
+        function renderBoardItem(boardKey, it) {
+            const cfg = BOARD_CONFIG[boardKey];
+            const closed = it.status === 'closed';
+            const fieldsHtml = cfg.fields
+                .filter(f => it.values && it.values[f.key])
+                .map(f => `<span style="white-space: nowrap;"><span style="color: #888;">${f.label}：</span><strong>${boardEsc(it.values[f.key])}</strong></span>`)
+                .join('　');
+
+            const statusBadge = closed
+                ? '<span style="background: #6c757d; color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px;">✅ 已結案</span>'
+                : (it.remind ? '<span style="background: #dc3545; color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px;">🔔 提醒中</span>' : '<span style="background: #28a745; color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px;">處理中</span>');
+
+            const noteHtml = it.note ? `<div style="margin-top: 6px; font-size: 13px; color: #6b5b3a;">📝 備註：${boardEsc(it.note)}</div>` : '';
+
+            let repliesHtml = '';
+            const replies = Array.isArray(it.replies) ? it.replies : Object.values(it.replies || {});
+            replies.forEach(r => {
+                if (r && r.text) {
+                    const delR = currentUser === 'christine' && r.uid ? ` <span style="color: #c99a8f; cursor: pointer; font-size: 11px;" onclick="deleteBoardReply('${boardKey}', '${it.id}', '${r.uid}')">刪除</span>` : '';
+                    repliesHtml += `<div style="margin-left: 16px; margin-top: 6px; padding: 6px 10px; background: rgba(255,255,255,0.7); border-left: 3px solid ${cfg.border}; border-radius: 3px; font-size: 13px;">💬 <strong>${boardEsc(r.author)}</strong>：${boardEsc(r.text)} <span style="color: #999; font-size: 11px;">${r.time || ''}</span>${delR}</div>`;
+                }
+            });
+
+            const canAct = !!currentUser;
+            const remindBtn = canAct && !closed ? `<button class="work-btn" style="background: ${it.remind ? '#adb5bd' : '#e07b39'}; color: white;" onclick="toggleBoardRemind('${boardKey}', '${it.id}')">${it.remind ? '取消提醒' : '🔔 提醒'}</button>` : '';
+            const editBtn = canAct ? `<button class="work-btn" style="background: #6f8ba0; color: white;" onclick="editBoardItem('${boardKey}', '${it.id}')">✏️ 修改</button>` : '';
+            const replyBtn = canAct ? `<button class="work-btn" style="background: #7a8663; color: white;" onclick="replyBoardItem('${boardKey}', '${it.id}')">💬 回覆</button>` : '';
+            const closeBtn = canAct ? `<button class="work-btn" style="background: ${closed ? '#f0ad4e' : '#28a745'}; color: white;" onclick="toggleBoardClose('${boardKey}', '${it.id}')">${closed ? '↩️ 重啟' : '✅ 結案'}</button>` : '';
+            const delBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" onclick="deleteBoardItem('${boardKey}', '${it.id}')">🗑 刪除</button>` : '';
+
+            const closedInfo = closed && it.closedBy ? `<span style="color: #999; font-size: 11px;">・${boardEsc(it.closedBy)} 於 ${it.closedAt || ''} 結案</span>` : '';
+
+            return `<div class="announcement-item" style="${closed ? 'opacity: 0.6;' : ''}">
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        ${statusBadge}${fieldsHtml}
+                    </div>
+                    <div class="announcement-author">📌 ${boardEsc(it.author)} ${closedInfo}</div>
+                    <div class="announcement-time">${it.time || ''}</div>
+                    ${noteHtml}
+                    ${repliesHtml}
+                </div>
+                <div style="display: flex; gap: 5px; margin-left: auto; flex-wrap: wrap; align-content: flex-start;">${remindBtn}${replyBtn}${editBtn}${closeBtn}${delBtn}</div>
+            </div>`;
+        }
+
+        // 目前開啟中的視圖 key（給看板操作後刷新用）
+        function boardActiveView() {
+            return document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                   document.getElementById('managerView').classList.contains('active') ? 'manager' :
+                   document.getElementById('viewerView').classList.contains('active') ? 'viewer' : null;
+        }
+
+        function refreshBoard(boardKey) {
+            const view = boardActiveView();
+            if (view) { renderBoard(view, boardKey); renderNav(view); }
+        }
+
+        // 新增看板項目（需登入）
+        function addBoardItem(boardKey, view) {
+            if (!currentUser) { alert('請先登入'); return; }
+            const cfg = BOARD_CONFIG[boardKey];
+            const values = {};
+            let hasAny = false;
+            cfg.fields.forEach(f => {
+                const el = document.getElementById(`${view}_${boardKey}_${f.key}`);
+                const v = el ? (el.value || '').trim() : '';
+                values[f.key] = v;
+                if (v) hasAny = true;
+            });
+            if (!hasAny) { alert('請至少填寫一個欄位（例如料號）'); return; }
+            const noteEl = document.getElementById(`${view}_${boardKey}_note`);
+            const note = noteEl ? (noteEl.value || '').trim() : '';
+
+            if (!Array.isArray(appData.boards[boardKey])) appData.boards[boardKey] = boardItems(boardKey);
+            appData.boards[boardKey].push({
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                values: values,
+                note: note,
+                status: 'open',
+                remind: false,
+                author: currentDisplayName(),
+                time: new Date().toLocaleString('zh-TW'),
+                replies: []
+            });
+            saveBoards(boardKey);
+
+            cfg.fields.forEach(f => { const el = document.getElementById(`${view}_${boardKey}_${f.key}`); if (el) el.value = ''; });
+            if (noteEl) noteEl.value = '';
+            refreshBoard(boardKey);
+        }
+
+        function getBoardItem(boardKey, id) {
+            return boardItems(boardKey).find(it => it.id === id) || null;
+        }
+
+        // 切換提醒（需登入）
+        function toggleBoardRemind(boardKey, id) {
+            if (!currentUser) return;
+            const it = getBoardItem(boardKey, id);
+            if (!it) return;
+            it.remind = !it.remind;
+            saveBoards(boardKey);
+            refreshBoard(boardKey);
+        }
+
+        // 結案 / 重啟（需登入）
+        function toggleBoardClose(boardKey, id) {
+            if (!currentUser) return;
+            const it = getBoardItem(boardKey, id);
+            if (!it) return;
+            if (it.status === 'closed') {
+                it.status = 'open';
+                it.closedBy = null; it.closedAt = null;
+            } else {
+                it.status = 'closed';
+                it.remind = false;
+                it.closedBy = currentDisplayName();
+                it.closedAt = new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            }
+            saveBoards(boardKey);
+            refreshBoard(boardKey);
+        }
+
+        // 回覆（需登入）
+        function replyBoardItem(boardKey, id) {
+            if (!currentUser) return;
+            const it = getBoardItem(boardKey, id);
+            if (!it) return;
+            openInputModal('💬 回覆 / 追蹤', '', function(text) {
+                if (!text.trim()) return;
+                if (!Array.isArray(it.replies)) it.replies = Object.values(it.replies || {});
+                it.replies.push({
+                    uid: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                    author: currentDisplayName(),
+                    text: text.trim(),
+                    time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                });
+                saveBoards(boardKey);
+                refreshBoard(boardKey);
+            });
+        }
+
+        // 刪除回覆（僅主管）
+        function deleteBoardReply(boardKey, id, uid) {
+            if (currentUser !== 'christine') return;
+            const it = getBoardItem(boardKey, id);
+            if (!it) return;
+            const replies = Array.isArray(it.replies) ? it.replies : Object.values(it.replies || {});
+            it.replies = replies.filter(r => r && r.uid !== uid);
+            saveBoards(boardKey);
+            refreshBoard(boardKey);
+        }
+
+        // 刪除整筆（僅主管）
+        function deleteBoardItem(boardKey, id) {
+            if (currentUser !== 'christine') { alert('只有主管可以刪除'); return; }
+            if (!confirm('確定要刪除這筆項目嗎？')) return;
+            appData.boards[boardKey] = boardItems(boardKey).filter(it => it.id !== id);
+            saveBoards(boardKey);
+            refreshBoard(boardKey);
+        }
+
+        // ===== 修改看板項目（通用編輯視窗） =====
+        let editingBoardKey = null, editingBoardId = null;
+
+        function editBoardItem(boardKey, id) {
+            if (!currentUser) return;
+            const it = getBoardItem(boardKey, id);
+            if (!it) return;
+            const cfg = BOARD_CONFIG[boardKey];
+            editingBoardKey = boardKey;
+            editingBoardId = id;
+            document.getElementById('boardEditTitle').textContent = '✏️ 修改：' + cfg.title.replace(/^[^ ]+ /, '');
+            const box = document.getElementById('boardEditFields');
+            box.innerHTML = cfg.fields.map(f =>
+                `<label style="font-weight: bold; display: block; margin-bottom: 5px;">${f.label}</label>
+                 <input type="text" id="boardEdit_${f.key}" value="${boardEsc((it.values || {})[f.key] || '')}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 12px;">`
+            ).join('') +
+                `<label style="font-weight: bold; display: block; margin-bottom: 5px;">備註</label>
+                 <textarea id="boardEdit_note" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; min-height: 60px; margin-bottom: 15px; font-family: inherit;">${boardEsc(it.note || '')}</textarea>`;
+            document.getElementById('boardEditModal').classList.add('active');
+        }
+
+        function closeBoardEditModal() {
+            editingBoardKey = null; editingBoardId = null;
+            document.getElementById('boardEditModal').classList.remove('active');
+        }
+
+        function confirmBoardEdit() {
+            if (!editingBoardKey) { closeBoardEditModal(); return; }
+            const it = getBoardItem(editingBoardKey, editingBoardId);
+            if (!it) { closeBoardEditModal(); return; }
+            const cfg = BOARD_CONFIG[editingBoardKey];
+            if (!it.values) it.values = {};
+            cfg.fields.forEach(f => {
+                const el = document.getElementById('boardEdit_' + f.key);
+                if (el) it.values[f.key] = (el.value || '').trim();
+            });
+            const noteEl = document.getElementById('boardEdit_note');
+            it.note = noteEl ? (noteEl.value || '').trim() : '';
+            const boardKey = editingBoardKey;
+            saveBoards(boardKey);
+            closeBoardEditModal();
+            refreshBoard(boardKey);
+        }
+
+        // 匯出看板為 Excel
+        function exportBoard(boardKey) {
+            const cfg = BOARD_CONFIG[boardKey];
+            const items = boardSorted(boardKey);
+            if (items.length === 0) { alert('目前沒有可匯出的項目'); return; }
+            const data = items.map(it => {
+                const row = {};
+                cfg.fields.forEach(f => { row[f.label] = (it.values || {})[f.key] || ''; });
+                row['備註'] = it.note || '';
+                row['狀態'] = it.status === 'closed' ? '已結案' : (it.remind ? '提醒中' : '處理中');
+                const replies = Array.isArray(it.replies) ? it.replies : Object.values(it.replies || {});
+                row['回覆紀錄'] = replies.filter(Boolean).map(r => `${r.author}：${r.text}`).join('\n');
+                row['建立人'] = it.author || '';
+                row['建立時間'] = it.time || '';
+                row['結案人'] = it.closedBy || '';
+                row['結案時間'] = it.closedAt || '';
+                return row;
+            });
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, cfg.sheet);
+            XLSX.writeFile(workbook, `${cfg.sheet}_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.xlsx`);
         }
     </script>
 </body>
