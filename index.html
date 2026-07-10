@@ -701,6 +701,14 @@
             border-color: #c6d0b3;
         }
         .chat-meta { font-size: 11px; color: #a89f8d; margin-bottom: 2px; }
+
+        /* 我的工作：自己與隊友左右並排 */
+        .works-split { display: flex; gap: 18px; align-items: flex-start; }
+        .works-col { flex: 1; min-width: 0; }
+        @media (max-width: 900px) {
+            .works-split { flex-direction: column; }
+            .works-col { width: 100%; }
+        }
         @media (max-width: 768px) {
             .view-layout { flex-direction: column; }
             .side-nav {
@@ -836,9 +844,10 @@
                 <div id="myStatusBar" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;"></div>
                 <input type="text" id="staffSearch" placeholder="🔍 搜尋工作（名稱、備註、留言、進度）" oninput="staffSearchQuery = this.value; renderStaffView(currentUser);" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
 
-                <div id="staffWorkList"></div>
-
-                <div id="peerWorkList" style="margin-top: 30px;"></div>
+                <div class="works-split">
+                    <div class="works-col" id="staffWorkList"></div>
+                    <div class="works-col" id="peerWorkList"></div>
+                </div>
             </div>
 
             </div>
@@ -899,12 +908,24 @@
                 </div>
             </div>
 
+            <div class="announcement-section" data-page="todo" style="background: #f2efe6; border-color: #cfc5a8;">
+                <h3>📝 我的待辦清單<span style="font-size: 12px; font-weight: normal; color: #a89f8d;">（只有主管本人看得到）</span></h3>
+                <div id="todoList"></div>
+                <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; border-top: 1px dashed #cfc5a8; padding-top: 12px;">
+                    <input type="date" id="todoDue" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    <input type="text" id="todoText" placeholder="要做什麼事..." style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 5px;" onkeypress="if(event.key==='Enter') addTodo()">
+                    <button onclick="addTodo()" class="submit-btn" style="margin-top: 0;">新增</button>
+                    <button onclick="exportTodos()" class="submit-btn" style="margin-top: 0; background: #17a2b8;">📥 匯出 Excel</button>
+                </div>
+            </div>
+
             <div class="announcement-section" data-page="assign" style="background: #fce4f1; border-color: #d63384;">
                 <h3 id="assignBoardHeader" style="cursor: pointer; user-select: none;" onclick="toggleAssignBoard()">▼ 📌 指派工作追蹤</h3>
                 <div id="assignBoard"></div>
             </div>
 
             <div data-page="board">
+                <div id="dashFilterBar" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;"></div>
                 <input type="text" id="managerSearch" placeholder="🔍 搜尋所有人的工作（名稱、備註、留言、進度）" oninput="managerSearchQuery = this.value; renderDashboard('manager');" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; font-size: 14px;">
 
                 <div class="dashboard-grid" id="dashboardGrid"></div>
@@ -1062,6 +1083,23 @@
         </div>
     </div>
 
+    <!-- 主管待辦編輯視窗 -->
+    <div id="todoEditModal" class="password-modal">
+        <div class="password-box" style="text-align: left;">
+            <h3 style="text-align: center;">✏️ 編輯待辦</h3>
+            <div style="margin-top: 15px;">
+                <label style="font-weight: bold; display: block; margin-bottom: 5px;">需求日</label>
+                <input type="date" id="todoEditDue" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 12px;">
+                <label style="font-weight: bold; display: block; margin-bottom: 5px;">事項 *</label>
+                <textarea id="todoEditText" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; min-height: 70px; margin-bottom: 15px; font-family: inherit;"></textarea>
+                <div style="display: flex; gap: 10px;">
+                    <button class="submit-btn" style="flex: 1; margin: 0;" onclick="confirmEditTodo()">儲存</button>
+                    <button class="cancel-btn" style="flex: 1; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="closeTodoEditModal()">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 主管指派工作視窗 -->
     <div id="assignModal" class="password-modal">
         <div class="password-box" style="text-align: left;">
@@ -1187,7 +1225,9 @@
             // 聊天室訊息（每則訊息獨立節點，不會互相覆蓋）
             chat: [],
             // 人員狀態：有空 / 在忙勿擾（選填）
-            staffStatus: {}
+            staffStatus: {},
+            // 主管私人待辦清單（每筆獨立節點，只在主管畫面顯示）
+            managerTodos: []
         };
 
         function normalizeStaffSettings(v) {
@@ -1252,6 +1292,7 @@
             appData.staffSettings = normalizeStaffSettings(JSON.parse(localStorage.getItem('staffSettings') || 'null'));
             appData.chat = JSON.parse(localStorage.getItem('chat') || '[]');
             appData.staffStatus = JSON.parse(localStorage.getItem('staffStatus') || '{}');
+            appData.managerTodos = JSON.parse(localStorage.getItem('managerTodos') || '[]');
             loadStaffNames();
 
             if (!db) {
@@ -1374,6 +1415,12 @@
                 localStorage.setItem('staffStatus', JSON.stringify(appData.staffStatus));
                 rerenderCurrentView();
             });
+            db.ref('managerTodos').on('value', snap => {
+                const v = snap.val();
+                appData.managerTodos = v ? Object.values(v).filter(Boolean) : [];
+                localStorage.setItem('managerTodos', JSON.stringify(appData.managerTodos));
+                rerenderCurrentView();
+            });
         }
 
         // 儲存人員設定（本機 + 雲端）
@@ -1413,6 +1460,7 @@
                 loadAnnouncements('manager');
                 loadShipments('manager');
                 renderChat('manager');
+                renderTodos();
             } else if (document.getElementById('viewerView').classList.contains('active')) {
                 renderDashboard('viewer');
                 loadAnnouncements('viewer');
@@ -1723,6 +1771,7 @@
                 { key: 'announce', label: '📢 公布欄' },
                 { key: 'ship', label: '🚚 出貨需求' },
                 { key: 'chat', label: '💬 聊天室' },
+                { key: 'todo', label: '📝 待辦清單' },
                 { key: 'assign', label: '📌 指派追蹤' },
                 { key: 'board', label: '🎯 戰情室' },
                 { key: 'staffmgr', label: '⚙️ 人員管理' },
@@ -1884,6 +1933,195 @@
             return ` <span style="background: ${busy ? '#dc3545' : '#28a745'}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap; font-weight: normal;">${busy ? '🔴 在忙勿擾' : '🟢 有空'}</span>`;
         }
 
+        // ===== 主管私人待辦清單（只在主管畫面顯示；每筆獨立節點儲存） =====
+        function saveTodosLocal() {
+            localStorage.setItem('managerTodos', JSON.stringify(appData.managerTodos));
+        }
+
+        function findTodo(id) {
+            return (appData.managerTodos || []).find(t => t && t.id === id);
+        }
+
+        function saveTodoCloud(item) {
+            if (db) db.ref('managerTodos/' + item.id).set(item).catch(e => console.log('雲端儲存失敗', e));
+        }
+
+        function addTodo() {
+            if (currentUser !== 'christine') return;
+            const due = document.getElementById('todoDue').value;
+            const text = (document.getElementById('todoText').value || '').trim();
+            if (!text) {
+                alert('請填入要做的事');
+                return;
+            }
+            const item = {
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                text: text,
+                due: due || '',
+                createdAt: new Date().toLocaleString('zh-TW')
+            };
+            appData.managerTodos.push(item);
+            saveTodosLocal();
+            saveTodoCloud(item);
+            document.getElementById('todoDue').value = '';
+            document.getElementById('todoText').value = '';
+            renderTodos();
+        }
+
+        // 結案（隱藏到底部的已結案分組）
+        function closeTodo(id) {
+            if (currentUser !== 'christine') return;
+            const item = findTodo(id);
+            if (!item) return;
+            item.done = true;
+            item.doneAt = new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit' });
+            saveTodosLocal();
+            saveTodoCloud(item);
+            renderTodos();
+        }
+
+        function reopenTodo(id) {
+            if (currentUser !== 'christine') return;
+            const item = findTodo(id);
+            if (!item) return;
+            delete item.done;
+            delete item.doneAt;
+            saveTodosLocal();
+            saveTodoCloud(item);
+            renderTodos();
+        }
+
+        function deleteTodo(id) {
+            if (currentUser !== 'christine') return;
+            if (!confirm('確定要刪除這筆待辦嗎？')) return;
+            appData.managerTodos = (appData.managerTodos || []).filter(t => t && t.id !== id);
+            saveTodosLocal();
+            if (db) db.ref('managerTodos/' + id).remove().catch(e => console.log('雲端儲存失敗', e));
+            renderTodos();
+        }
+
+        // 編輯（需求日＋事項）
+        let editingTodoId = null;
+
+        function editTodo(id) {
+            if (currentUser !== 'christine') return;
+            const item = findTodo(id);
+            if (!item) return;
+            editingTodoId = id;
+            document.getElementById('todoEditDue').value = item.due || '';
+            document.getElementById('todoEditText').value = item.text || '';
+            document.getElementById('todoEditModal').classList.add('active');
+        }
+
+        function closeTodoEditModal() {
+            editingTodoId = null;
+            document.getElementById('todoEditModal').classList.remove('active');
+        }
+
+        function confirmEditTodo() {
+            const item = findTodo(editingTodoId);
+            if (!item) { closeTodoEditModal(); return; }
+            const text = (document.getElementById('todoEditText').value || '').trim();
+            if (!text) {
+                alert('事項不能空白');
+                return;
+            }
+            item.text = text;
+            item.due = document.getElementById('todoEditDue').value || '';
+            closeTodoEditModal();
+            saveTodosLocal();
+            saveTodoCloud(item);
+            renderTodos();
+        }
+
+        function toggleClosedTodos() {
+            const key = 'todo|closed';
+            collapsedSections[key] = !((key in collapsedSections) ? collapsedSections[key] : true);
+            localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
+            renderTodos();
+        }
+
+        function renderTodos() {
+            const el = document.getElementById('todoList');
+            if (!el || currentUser !== 'christine') return;
+
+            const todos = (appData.managerTodos || []).filter(Boolean);
+            if (todos.length === 0) {
+                el.innerHTML = '<p style="color: #999;">還沒有待辦事項，先加一筆吧！</p>';
+                return;
+            }
+
+            const tsOf = t => parseInt(String(t.id).slice(0, 13)) || 0;
+            const open = todos.filter(t => !t.done).sort((a, b) => (a.due || '9999-99-99').localeCompare(b.due || '9999-99-99'));
+            const closed = todos.filter(t => t.done).sort((a, b) => tsOf(b) - tsOf(a));
+
+            function todoItemHtml(t) {
+                const isDone = !!t.done;
+                let dueBadge = '';
+                if (t.due) {
+                    const b = shipmentBadge(t.due);
+                    const dateDisplay = t.due.replace(/^\d{4}-/, '').replace('-', '/');
+                    dueBadge = `<span style="background: ${isDone ? '#6c757d' : b.color}; color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap;">📅 ${dateDisplay}${isDone ? '' : ' ' + b.text}</span>`;
+                }
+                const doneBadge = isDone ? ` <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">✅ 已結案${t.doneAt ? ' ' + t.doneAt : ''}</span>` : '';
+                const btns = isDone
+                    ? `<button class="work-btn" style="background: #6c757d; color: white;" onclick="reopenTodo('${t.id}')">還原</button>
+                       <button class="work-btn delete-btn" onclick="deleteTodo('${t.id}')">刪除</button>`
+                    : `<button class="work-btn" style="background: #28a745; color: white;" onclick="closeTodo('${t.id}')">結案</button>
+                       <button class="work-btn edit-btn" onclick="editTodo('${t.id}')">編輯</button>
+                       <button class="work-btn delete-btn" onclick="deleteTodo('${t.id}')">刪除</button>`;
+                return `<div class="announcement-item" style="${isDone ? 'opacity: 0.55;' : ''}">
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            ${dueBadge}<strong${isDone ? ' style="text-decoration: line-through; color: #888;"' : ''}>${t.text}</strong>${doneBadge}
+                        </div>
+                        <div class="announcement-time">建立: ${t.createdAt || ''}</div>
+                    </div>
+                    <div style="display: flex; gap: 5px; margin-left: auto;">${btns}</div>
+                </div>`;
+            }
+
+            let html = '';
+            open.forEach(t => { html += todoItemHtml(t); });
+            if (open.length === 0) html += '<p style="color: #999;">沒有未結案的待辦 🎉</p>';
+
+            if (closed.length > 0) {
+                const key = 'todo|closed';
+                const collapsed = (key in collapsedSections) ? collapsedSections[key] : true;
+                html += `<div style="cursor: pointer; user-select: none; color: #999; font-weight: bold; padding: 8px 0; border-top: 1px dashed #aaa; margin-top: 8px;" onclick="toggleClosedTodos()">${collapsed ? '▶' : '▼'} ✅ 已結案 (${closed.length})</div>`;
+                if (!collapsed) {
+                    closed.forEach(t => { html += todoItemHtml(t); });
+                }
+            }
+
+            el.innerHTML = html;
+        }
+
+        // 匯出待辦清單 Excel
+        function exportTodos() {
+            if (currentUser !== 'christine') return;
+            const todos = (appData.managerTodos || []).filter(Boolean);
+            if (todos.length === 0) {
+                alert('目前沒有待辦事項');
+                return;
+            }
+            const data = todos
+                .slice()
+                .sort((a, b) => (a.due || '9999-99-99').localeCompare(b.due || '9999-99-99'))
+                .map(t => ({
+                    '需求日': t.due || '',
+                    '事項': t.text || '',
+                    '狀態': t.done ? '已結案' : '未結案',
+                    '建立時間': t.createdAt || '',
+                    '結案日': t.doneAt || ''
+                }));
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, '待辦清單');
+            worksheet['!cols'] = [{ wch: 12 }, { wch: 50 }, { wch: 8 }, { wch: 20 }, { wch: 8 }];
+            XLSX.writeFile(workbook, `主管待辦清單_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.xlsx`);
+        }
+
         // 「我的狀態」按鈕列（我的工作頁最上方）
         function renderMyStatusBar() {
             const el = document.getElementById('myStatusBar');
@@ -1951,6 +2189,7 @@
                 loadAnnouncements('manager');
                 loadShipments('manager');
                 renderChat('manager');
+                renderTodos();
                 applyPage('manager');
             } else if (user === 'penny') {
                 document.getElementById('viewerView').classList.add('active');
@@ -2097,24 +2336,32 @@
             const emptySearch = (staffSearchQuery.trim() && works.length === 0) ? '<p style="color: #999;">沒有符合搜尋的工作</p>' : '';
             document.getElementById('staffWorkList').innerHTML = todaySummaryHtml(user) + emptySearch + html;
 
-            // 我的狀態列＋隊友目前的工作（不含已完成），看得到彼此的忙碌程度
+            // 我的狀態列＋隊友的工作（右欄；一次看一位，可下拉切換，不含已完成）
             renderMyStatusBar();
             const peerEl = document.getElementById('peerWorkList');
             if (peerEl) {
-                let peerHtml = '';
-                Object.keys(staffNames).forEach(k => {
-                    if (k === user || isStaffDisabled(k)) return;
-                    const list = (appData.works[k] || []).filter(w => w.status !== '完成');
+                const peers = Object.keys(staffNames).filter(k => k !== user && !isStaffDisabled(k));
+                if (peers.length === 0) {
+                    peerEl.innerHTML = '';
+                } else {
+                    let sel = localStorage.getItem('peerFilter') || '';
+                    if (peers.indexOf(sel) < 0) sel = peers[0];
+                    const options = peers.map(k => `<option value="${k}"${k === sel ? ' selected' : ''}>${staffNames[k]}</option>`).join('');
+                    const list = (appData.works[sel] || []).filter(w => w.status !== '完成');
                     const doing = list.filter(w => w.status === '進行中').length;
                     const waiting = list.filter(w => w.status === '等待中').length;
-                    peerHtml += `<div class="staff-card" style="margin-bottom: 15px;">
-                        <div class="staff-name">${staffNames[k]}${statusBadge(k)} <span style="font-size: 13px; color: #8a8172; font-weight: normal;">｜🔨 進行中 ${doing}・📥 等待中 ${waiting}</span></div>
-                        ${list.length > 0 ? renderWorksByStatus(list, k, false) : '<p style="color: #999;">目前沒有未完成的工作</p>'}
-                    </div>`;
-                });
-                peerEl.innerHTML = peerHtml
-                    ? `<h3 style="background: #f3edda; border: 1px solid #e4dabc; border-radius: 10px; padding: 12px 14px; font-size: 15px; margin-bottom: 15px;">👀 隊友目前的工作</h3>` + peerHtml
-                    : '';
+
+                    peerEl.innerHTML = `
+                        <div style="background: #f3edda; border: 1px solid #e4dabc; border-radius: 10px; padding: 10px 14px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-size: 15px;">👀 隊友：</span>
+                            <select onchange="setPeerFilter(this.value)" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 5px;">${options}</select>
+                            <span style="font-size: 12px; color: #a89f8d;">（不含已完成）</span>
+                        </div>
+                        <div class="staff-card">
+                            <div class="staff-name">${staffNames[sel]}${statusBadge(sel)} <span style="font-size: 13px; color: #8a8172; font-weight: normal;">｜🔨 進行中 ${doing}・📥 等待中 ${waiting}</span></div>
+                            ${list.length > 0 ? renderWorksByStatus(list, sel, false) : '<p style="color: #999;">目前沒有未完成的工作</p>'}
+                        </div>`;
+                }
             }
 
             loadAnnouncements('staff');
@@ -2836,14 +3083,46 @@
             renderStaffView(currentUser);
         }
 
+        // 隊友篩選（生管我的工作頁右欄，記在本機）
+        function setPeerFilter(k) {
+            localStorage.setItem('peerFilter', k);
+            renderStaffView(currentUser);
+        }
+
+        // 戰情室人員篩選（主管專用，記在本機；空字串 = 全部）
+        let dashFilter = localStorage.getItem('dashFilter') || '';
+
+        function setDashFilter(k) {
+            dashFilter = k;
+            localStorage.setItem('dashFilter', k);
+            renderDashboard('manager');
+        }
+
         // 戰情室
         function renderDashboard(view = 'manager') {
             const works = appData.works;
             let html = '';
 
+            // 主管的「看誰」篩選列
+            if (view === 'manager') {
+                const bar = document.getElementById('dashFilterBar');
+                if (bar) {
+                    const keys = Object.keys(staffNames).filter(k => !isStaffDisabled(k));
+                    if (dashFilter && keys.indexOf(dashFilter) < 0) dashFilter = '';
+                    const chip = (k, label) => {
+                        const active = dashFilter === k;
+                        return `<button class="work-btn" style="background: ${active ? '#7a8663' : '#e9e2d0'}; color: ${active ? 'white' : '#6b6353'};" onclick="setDashFilter('${k}')">${label}${active ? ' ✓' : ''}</button>`;
+                    };
+                    bar.innerHTML = `<span style="color: #8a8172; font-size: 14px;">看誰：</span>`
+                        + chip('', '全部')
+                        + keys.map(k => chip(k, staffNames[k])).join('');
+                }
+            }
+
             const dashQuery = view === 'manager' ? managerSearchQuery : viewerSearchQuery;
             Object.keys(staffNames).forEach(user => {
                 if (isStaffDisabled(user)) return; // 停用人員不顯示卡片
+                if (view === 'manager' && dashFilter && user !== dashFilter) return; // 篩選只看某人
                 const userWorks = (works[user] || []).filter(w => workMatches(w, dashQuery));
                 const doing = userWorks.filter(w => w.status === '進行中').length;
                 const waiting = userWorks.filter(w => w.status === '等待中').length;
