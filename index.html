@@ -1408,6 +1408,7 @@
                 const v = snap.val();
                 appData.chat = v ? Object.values(v).filter(Boolean) : [];
                 localStorage.setItem('chat', JSON.stringify(appData.chat));
+                notifyNewChat(); // 有新留言時跳出提醒
                 rerenderCurrentView();
             });
             db.ref('staffStatus').on('value', snap => {
@@ -1836,6 +1837,7 @@
         function switchPage(view, page) {
             currentPage[view] = page;
             if (page === 'chat') markChatSeen(); // 點進聊天室就標為已讀
+            if (page === 'home') renderAlerts(view, currentUser); // 回主頁時刷新通知（含聊天室橫幅）
             applyPage(view);
         }
 
@@ -1911,6 +1913,72 @@
             localStorage.setItem('chat', JSON.stringify(appData.chat));
             if (db) db.ref('chat/' + id).remove().catch(e => console.log('雲端儲存失敗', e));
             rerenderCurrentView();
+        }
+
+        // ===== 聊天室新留言提醒 =====
+
+        // 主頁的聊天室未讀橫幅
+        function chatAlertHtml(view) {
+            const n = chatUnreadCount();
+            if (n === 0) return '';
+            const msgs = (appData.chat || []).slice().sort((a, b) => chatTs(a.id) - chatTs(b.id));
+            const latest = msgs[msgs.length - 1];
+            const preview = latest ? `${latest.author}：${String(latest.text).slice(0, 30)}` : '';
+            return `<div style="background: #e7ecdd; border: 1px solid #9aa77f; border-radius: 8px; padding: 12px 15px; margin-bottom: 15px;">
+                <strong style="color: #5f6b4a;">💬 聊天室有 ${n} 則新留言</strong>
+                <div style="color: #5f6b4a; font-size: 14px; margin-top: 5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">・${preview}<button class="work-btn" style="background: #7a8663; color: white;" onclick="switchPage('${view}', 'chat')">前往聊天室</button></div>
+            </div>`;
+        }
+
+        // 目前開啟中的視圖 key（staff / manager / viewer）
+        function activeViewKey() {
+            return document.getElementById('staffView').classList.contains('active') ? 'staff'
+                : document.getElementById('managerView').classList.contains('active') ? 'manager'
+                : document.getElementById('viewerView').classList.contains('active') ? 'viewer' : null;
+        }
+
+        function goToChat() {
+            const view = activeViewKey();
+            if (view) switchPage(view, 'chat');
+        }
+
+        // 畫面上方的即時小提示（點擊直接進聊天室，幾秒後自動消失）
+        function showChatToast(msg) {
+            let t = document.getElementById('chatToast');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = 'chatToast';
+                t.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10000;background:#5f6b4a;color:white;padding:10px 18px;border-radius:999px;box-shadow:0 8px 24px rgba(40,34,24,0.35);cursor:pointer;font-size:14px;max-width:90%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                t.onclick = function() { goToChat(); hideChatToast(); };
+                document.body.appendChild(t);
+            }
+            t.textContent = `💬 ${msg.author}：${String(msg.text).slice(0, 40)}`;
+            t.style.display = 'block';
+            if (typeof clearTimeout === 'function' && showChatToast._timer) clearTimeout(showChatToast._timer);
+            if (typeof setTimeout === 'function') showChatToast._timer = setTimeout(hideChatToast, 6000);
+        }
+
+        function hideChatToast() {
+            const t = document.getElementById('chatToast');
+            if (t) t.style.display = 'none';
+        }
+
+        // 雲端有新留言時判斷要不要提醒（第一次載入只記基準，不提醒舊訊息）
+        let chatNotifyBaseTs = null;
+
+        function notifyNewChat() {
+            let maxTs = 0, latest = null;
+            (appData.chat || []).forEach(m => {
+                if (m && chatTs(m.id) > maxTs) { maxTs = chatTs(m.id); latest = m; }
+            });
+            if (chatNotifyBaseTs === null) { chatNotifyBaseTs = maxTs; return; }
+            if (maxTs <= chatNotifyBaseTs) return;
+            chatNotifyBaseTs = maxTs;
+            if (!latest || !currentUser) return;
+            if (latest.author === currentDisplayName()) return; // 自己發的不提醒
+            const view = activeViewKey();
+            if (!view || currentPage[view] === 'chat') return; // 正在聊天室就不用跳
+            showChatToast(latest);
         }
 
         // ===== 人員狀態：有空 / 在忙勿擾（生管自己設定，大家都看得到） =====
@@ -2235,6 +2303,7 @@
                     `</div>`;
                 }
                 html += annAlertHtml('christine');
+                html += chatAlertHtml('manager');
                 const el = document.getElementById('managerAlerts');
                 if (el) el.innerHTML = html || emptyNoticeHtml();
                 renderNav('manager');
@@ -2263,12 +2332,13 @@
                 }
 
                 html += annAlertHtml(user);
+                html += chatAlertHtml('staff');
                 const el = document.getElementById('staffAlerts');
                 if (el) el.innerHTML = html || emptyNoticeHtml();
                 renderNav('staff');
             } else if (view === 'viewer') {
                 const el = document.getElementById('viewerAlerts');
-                if (el) el.innerHTML = annAlertHtml('penny') || emptyNoticeHtml();
+                if (el) el.innerHTML = (annAlertHtml('penny') + chatAlertHtml('viewer')) || emptyNoticeHtml();
                 renderNav('viewer');
             }
         }
