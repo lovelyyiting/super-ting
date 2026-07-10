@@ -1224,9 +1224,15 @@
         }
 
         // 儲存工作資料（本機 + 雲端）
-        function saveWorks() {
+        // 有指定 user 時只寫該生管的節點，避免兩台裝置同時儲存互相蓋掉整包資料
+        function saveWorks(user) {
             localStorage.setItem('works', JSON.stringify(appData.works));
-            if (db) db.ref('works').set(appData.works).catch(e => console.log('雲端儲存失敗', e));
+            if (!db) return;
+            if (user) {
+                db.ref('works/' + user).set(appData.works[user] || []).catch(e => console.log('雲端儲存失敗', e));
+            } else {
+                db.ref('works').set(appData.works).catch(e => console.log('雲端儲存失敗', e));
+            }
         }
 
         // 儲存公告資料（本機 + 雲端）
@@ -1348,7 +1354,7 @@
                 assignedBy: 'Christine'
             });
 
-            saveWorks();
+            saveWorks(user);
             document.getElementById('assignTitle').value = '';
             document.getElementById('assignNote').value = '';
             closeAssignModal();
@@ -1378,7 +1384,7 @@
                 collapsedSections[currentUser + '|' + work.status] = false;
                 localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
 
-                saveWorks();
+                saveWorks(currentUser);
             }
             markAssignRead(workId);
         }
@@ -1956,10 +1962,10 @@
                 return;
             }
 
-            let target = null;
+            let target = null, targetOwner = null;
             Object.keys(appData.works).forEach(user => {
                 const work = (appData.works[user] || []).find(w => w.id === workId);
-                if (work) target = work;
+                if (work) { target = work; targetOwner = user; }
             });
 
             if (!target) return;
@@ -1970,7 +1976,7 @@
                 } else {
                     delete target.managerNote;
                 }
-                saveWorks();
+                saveWorks(targetOwner);
                 rerenderCurrentView();
             });
         }
@@ -2195,15 +2201,17 @@
 
             appData.works[user].push(work);
 
-            saveWorks();
+            saveWorks(user);
         }
 
         // 更新工作狀態
         function updateWorkStatus(workId, newStatus) {
             if (!newStatus) return; // 選到「改狀態」placeholder 時不動作，避免把狀態清成空白
+            let foundOwner = null;
             Object.keys(appData.works).forEach(user => {
                 const work = appData.works[user].find(w => w.id === workId);
                 if (work) {
+                    foundOwner = user;
                     const now = new Date().toLocaleString('zh-TW');
                     work.status = newStatus;
 
@@ -2230,7 +2238,7 @@
                     }
                 }
             });
-            saveWorks();
+            saveWorks(foundOwner);
             renderStaffView(currentUser);
         }
 
@@ -2238,7 +2246,7 @@
         function deleteWork(workId) {
             if (confirm('確定要刪除這項工作嗎？')) {
                 appData.works[currentUser] = (appData.works[currentUser] || []).filter(w => w.id !== workId);
-                saveWorks();
+                saveWorks(currentUser);
                 renderStaffView(currentUser);
             }
         }
@@ -2279,7 +2287,7 @@
                     text: text.trim(),
                     time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
                 });
-                saveWorks();
+                saveWorks(currentUser);
                 renderStaffView(currentUser);
             });
         }
@@ -2315,7 +2323,7 @@
             work.title = title.trim();
             work.note = document.getElementById('editWorkNote').value.trim();
             closeEditWorkModal();
-            saveWorks();
+            saveWorks(currentUser);
             renderStaffView(currentUser);
         }
 
@@ -2488,7 +2496,7 @@
             if (!work) return;
             work.assignClosed = true;
             work.assignClosedAt = new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit' });
-            saveWorks();
+            saveWorks(owner);
             renderAssignBoard();
         }
 
@@ -2499,7 +2507,7 @@
             if (!work) return;
             delete work.assignClosed;
             delete work.assignClosedAt;
-            saveWorks();
+            saveWorks(owner);
             renderAssignBoard();
         }
 
