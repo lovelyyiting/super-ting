@@ -1054,6 +1054,19 @@
         </div>
     </div>
 
+    <!-- 修改出貨日期視窗 -->
+    <div id="shipDateModal" class="password-modal">
+        <div class="password-box">
+            <h3>📅 修改出貨日期</h3>
+            <div id="shipDateInfo" style="margin-top: 10px; color: #666; font-size: 14px;"></div>
+            <input type="date" id="shipDateInput" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-top: 12px;">
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button class="submit-btn" style="flex: 1; margin: 0;" onclick="confirmShipDate()">確認</button>
+                <button class="cancel-btn" style="flex: 1; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;" onclick="closeShipDateModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 通用輸入視窗（進度/留言/回覆） -->
     <div id="inputModal" class="password-modal">
         <div class="password-box" style="text-align: left;">
@@ -2353,6 +2366,9 @@
             if (!q || !q.trim()) return true;
             q = q.trim().toLowerCase();
             const parts = [w.title, w.note, w.managerNote];
+            (Array.isArray(w.managerNotes) ? w.managerNotes : Object.values(w.managerNotes || {})).forEach(n => {
+                if (n && n.text) parts.push(n.text);
+            });
             (Array.isArray(w.progress) ? w.progress : Object.values(w.progress || {})).forEach(p => {
                 if (p && p.text) parts.push(p.text);
             });
@@ -2592,7 +2608,12 @@
 
             if (work.note) html += `<div class="work-note">📝 ${work.note}</div>`;
 
-            if (work.managerNote) html += `<div class="work-note" style="background: #fff8e1; border-left: 3px solid #f0ad4e; padding: 4px 8px; margin-top: 4px; border-radius: 3px;">👑 Christine 留言：${work.managerNote}</div>`;
+            const noteDelBtn = (nid) => currentUser === 'christine' ? ` <button class="work-btn delete-btn" style="padding: 2px 8px; font-size: 11px;" onclick="deleteManagerNote('${owner}', '${work.id}', '${nid}')">刪除</button>` : '';
+            if (work.managerNote) html += `<div class="work-note" style="background: #fff8e1; border-left: 3px solid #f0ad4e; padding: 4px 8px; margin-top: 4px; border-radius: 3px;">👑 Christine 留言：${work.managerNote}${noteDelBtn('legacy')}</div>`;
+            const managerNotes = (Array.isArray(work.managerNotes) ? work.managerNotes : Object.values(work.managerNotes || {})).filter(n => n && n.text);
+            managerNotes.forEach(n => {
+                html += `<div class="work-note" style="background: #fff8e1; border-left: 3px solid #f0ad4e; padding: 4px 8px; margin-top: 4px; border-radius: 3px;">👑 Christine 留言：${n.text} <span style="color: #999; font-size: 11px;">${n.time || ''}</span>${noteDelBtn(n.nid)}</div>`;
+            });
 
             const progressList = (Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {})).filter(p => p && p.text);
             if (progressList.length > 0) {
@@ -2803,15 +2824,37 @@
 
             if (!target) return;
 
-            openInputModal('👑 主管留言（清空內容並確認 = 刪除留言）', target.managerNote || '', function(input) {
-                if (input.trim()) {
-                    target.managerNote = input.trim();
-                } else {
-                    delete target.managerNote;
-                }
+            openInputModal('👑 新增主管留言（可累加多則）', '', function(input) {
+                if (!input.trim()) return;
+                if (!Array.isArray(target.managerNotes)) target.managerNotes = Object.values(target.managerNotes || {});
+                target.managerNotes.push({
+                    nid: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                    text: input.trim(),
+                    time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                });
                 saveWorks(targetOwner);
                 rerenderCurrentView();
             });
+        }
+
+        // 刪除單則主管留言（'legacy' 代表刪除舊版單則留言）
+        function deleteManagerNote(owner, workId, nid) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以刪除留言');
+                return;
+            }
+            const work = (appData.works[owner] || []).find(w => w.id === workId);
+            if (!work) return;
+            if (!confirm('確定要刪除這則留言嗎？')) return;
+
+            if (nid === 'legacy') {
+                delete work.managerNote;
+            } else {
+                const notes = Array.isArray(work.managerNotes) ? work.managerNotes : Object.values(work.managerNotes || {});
+                work.managerNotes = notes.filter(n => n && n.nid !== nid);
+            }
+            saveWorks(owner);
+            rerenderCurrentView();
         }
 
         // 取得工作列表
@@ -2881,7 +2924,10 @@
                         '總時長(開始→完成)': duration,
                         '實際作業時間': netDuration,
                         '備註': work.note || '',
-                        '主管留言': work.managerNote || '',
+                        '主管留言': [work.managerNote].concat(
+                            (Array.isArray(work.managerNotes) ? work.managerNotes : Object.values(work.managerNotes || {}))
+                                .map(n => n && n.text ? `[${n.time || ''}] ${n.text}` : '')
+                        ).filter(Boolean).join('\n'),
                         '進度記錄': (Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {})).map(p => `[${p.time}] ${p.text}`).join('\n'),
                         '回覆串': (Array.isArray(work.comments) ? work.comments : Object.values(work.comments || {})).filter(c => c && c.text).map(c => `[${c.time}] ${c.author}: ${c.text}`).join('\n'),
                         '特別標記': work.flag === '主管注意' ? '需主管注意' : work.flag === '隊友協助' ? `需${staffNames[work.helper] || '隊友'}協助` : ''
@@ -3964,6 +4010,7 @@
             const badge = shipmentBadge(ship.date);
             const dateDisplay = ship.date ? ship.date.replace(/^\d{4}-/, '').replace('-', '/') : '';
             const updateBtn = currentUser ? `<button class="work-btn" style="background: #7a8663; color: white;" onclick="addShipmentUpdate('${ship.id}')">更新</button>` : '';
+            const dateBtn = currentUser ? `<button class="work-btn" style="background: #6f8ba0; color: white;" onclick="editShipmentDate('${ship.id}')">📅 改日期</button>` : '';
             const deleteBtn = currentUser === 'christine' ? `<button class="work-btn delete-btn" onclick="deleteShipment('${ship.id}')">刪除</button>` : '';
 
             let updatesHtml = '';
@@ -3985,8 +4032,57 @@
                     <div class="announcement-time">${ship.time}</div>
                     ${updatesHtml}
                 </div>
-                <div style="display: flex; gap: 5px; margin-left: auto;">${updateBtn}${deleteBtn}</div>
+                <div style="display: flex; gap: 5px; margin-left: auto;">${updateBtn}${dateBtn}${deleteBtn}</div>
             </div>`;
+        }
+
+        // 修改出貨日期（任何登入者皆可）
+        let editingShipId = null;
+
+        function editShipmentDate(shipId) {
+            if (!currentUser) return;
+            const ship = appData.shipments.find(s => s.id === shipId);
+            if (!ship) return;
+
+            editingShipId = shipId;
+            document.getElementById('shipDateInfo').textContent = ship.text || '';
+            document.getElementById('shipDateInput').value = ship.date || '';
+            document.getElementById('shipDateModal').classList.add('active');
+        }
+
+        function closeShipDateModal() {
+            editingShipId = null;
+            document.getElementById('shipDateModal').classList.remove('active');
+        }
+
+        function confirmShipDate() {
+            const ship = appData.shipments.find(s => s.id === editingShipId);
+            const date = document.getElementById('shipDateInput').value;
+            if (!ship) { closeShipDateModal(); return; }
+            if (!date) {
+                alert('請選擇出貨日期');
+                return;
+            }
+
+            const oldDate = ship.date;
+            ship.date = date;
+
+            // 留下改期記錄，大家都知道是誰改的
+            if (oldDate !== date) {
+                if (!Array.isArray(ship.updates)) ship.updates = Object.values(ship.updates || {});
+                ship.updates.push({
+                    uid: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                    author: currentDisplayName(),
+                    text: `📅 出貨日期由 ${oldDate || '未定'} 改為 ${date}`,
+                    time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                });
+            }
+
+            closeShipDateModal();
+            saveShipments();
+            const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                              document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
+            loadShipments(currentView);
         }
 
         // 切換「一週後的出貨」收合
