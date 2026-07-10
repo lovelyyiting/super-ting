@@ -2773,8 +2773,17 @@
             if (!appData.works[target]) appData.works[target] = [];
             appData.works[target].push(work);
 
-            saveWorks(owner);
-            saveWorks(target);
+            // 兩個人的清單必須「一次」寫入：分兩次存的話，第一次存檔會觸發
+            // 雲端同步立刻重載資料，把還沒存的那份洗掉，工作就會消失
+            const newOwnerList = appData.works[owner];
+            const newTargetList = appData.works[target];
+            localStorage.setItem('works', JSON.stringify(appData.works));
+            if (db) {
+                const updates = {};
+                updates[owner] = newOwnerList;
+                updates[target] = newTargetList;
+                db.ref('works').update(updates).catch(e => console.log('雲端儲存失敗', e));
+            }
             rerenderCurrentView();
             alert(`✅ 已轉派給 ${staffNames[target]}，對方會收到警示通知`);
         }
