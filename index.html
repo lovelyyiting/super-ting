@@ -81,9 +81,9 @@
         }
 
         .identity-btn.staff:hover {
-            background: #5568d3;
+            background: #6e7a58;
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 5px 15px rgba(110, 122, 88, 0.4);
         }
 
         .identity-btn.manager {
@@ -293,7 +293,7 @@
         }
 
         .submit-btn:hover {
-            background: #5568d3;
+            background: #6e7a58;
         }
 
         .cancel-btn {
@@ -478,10 +478,157 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        /* 文青風統一（與 SUPER TING 工具箱一致）*/
-        body { background: #efe9dc !important; color: #4a4640; font-family: "Noto Serif TC","Songti TC","STSong","PMingLiU",serif !important; letter-spacing: 0.02em; }
-        .container { background: #faf6ec !important; box-shadow: 0 6px 24px rgba(90,78,55,0.14) !important; border: 1px solid #e4dccb; }
-        h1, h2, h3 { font-weight: 500; letter-spacing: 0.04em; }
+        /* 文青風 2.0（與 SUPER TING 工具箱一致；純樣式質感強化，不動功能與架構） */
+        :root {
+            --paper: #efe9dc;
+            --card: #faf6ec;
+            --ink: #4a4640;
+            --ink-soft: #8a8172;
+            --olive: #7a8663;
+            --olive-deep: #5f6b4a;
+            --line: #e2d9c6;
+            --shadow-sm: 0 1px 2px rgba(90,78,55,0.07), 0 2px 10px rgba(90,78,55,0.06);
+            --shadow-md: 0 4px 10px rgba(90,78,55,0.10), 0 14px 34px rgba(90,78,55,0.12);
+        }
+
+        body {
+            background:
+                radial-gradient(1100px 480px at 12% -8%, rgba(140,154,118,0.16), transparent 60%),
+                radial-gradient(900px 420px at 108% 8%, rgba(191,164,111,0.13), transparent 55%),
+                #efe9dc !important;
+            color: var(--ink);
+            font-family: "Noto Serif TC","Songti TC","STSong","PMingLiU",serif !important;
+            letter-spacing: 0.02em;
+            padding: 20px 12px 48px;
+        }
+        ::selection { background: rgba(122,134,99,0.25); }
+
+        .container {
+            background: var(--card) !important;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            box-shadow: var(--shadow-md) !important;
+        }
+        h1, h2, h3 { font-weight: 500; letter-spacing: 0.05em; }
+
+        /* 頁首 */
+        .header {
+            background: linear-gradient(140deg, #8c9a76 0%, #6e7a58 58%, #5f6b4a 100%);
+            padding: 28px 20px 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.25);
+        }
+        .header h1 { font-size: 26px; letter-spacing: 0.14em; text-shadow: 0 1px 3px rgba(40,45,30,0.25); }
+        .header p { letter-spacing: 0.28em; opacity: 0.85; font-size: 12px; margin-top: 6px; }
+
+        /* 登入按鈕：柔和大地色系（狀態語意色不變） */
+        .identity-btn {
+            border-radius: 14px;
+            box-shadow: var(--shadow-sm);
+            letter-spacing: 0.08em;
+            transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+        }
+        .identity-btn.manager { background: #b0736a; }
+        .identity-btn.manager:hover { background: #a2645b; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(176,115,106,0.35); }
+        .identity-btn.viewer { background: #6f8ba0; }
+        .identity-btn.viewer:hover { background: #607d93; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(111,139,160,0.35); }
+        .identity-btn.staff:hover { box-shadow: 0 8px 20px rgba(110,122,88,0.35); }
+        .identity-view h2 { color: var(--ink); letter-spacing: 0.1em; }
+        /* 修正：登入後隱藏身份選擇區（原本缺這條規則，登入後登入按鈕仍留在頁面上方） */
+        .identity-view { display: none; }
+        .identity-view.active { display: block; }
+
+        /* 區塊卡片：公布欄（暖米金）、出貨（霧藍綠）、指派（陶土粉）統一柔化 */
+        .announcement-section {
+            background: #fbf4de !important;
+            border: 1px solid #e0d2a4 !important;
+            border-radius: 14px;
+            box-shadow: var(--shadow-sm);
+        }
+        .announcement-section h3 { color: #8a6d1f; }
+        .announcement-section[style*="eef5ff"] { background: #ecf1f2 !important; border-color: #bccdd2 !important; }
+        .announcement-section[style*="eef5ff"] h3 { color: #4f7286; }
+        .announcement-section[style*="fce4f1"] { background: #f7ece7 !important; border-color: #dcbcae !important; }
+        .announcement-section[style*="fce4f1"] h3 { color: #a2645b; }
+
+        .announcement-item {
+            background: #fffdf6;
+            border: 1px solid #ece2cb;
+            border-left: 3px solid #d8c68f;
+            border-radius: 10px;
+            box-shadow: var(--shadow-sm);
+        }
+        .announcement-time { color: #b3a98f; }
+        .announcement-author { color: var(--ink-soft); }
+
+        /* 工作卡與戰情室 */
+        .work-item {
+            background: #fffdf6;
+            border: 1px solid #e9e0cb;
+            border-left: 4px solid var(--olive);
+            border-radius: 10px;
+            box-shadow: var(--shadow-sm);
+            transition: box-shadow .18s ease;
+        }
+        .work-item:hover { box-shadow: var(--shadow-md); }
+        .work-section h3 {
+            background: #f3edda;
+            border: 1px solid #e4dabc;
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-size: 15px;
+            transition: background .15s ease;
+        }
+        .work-section h3:hover { background: #ede5cc; }
+        .work-status { border-radius: 999px; padding: 3px 11px; }
+        .staff-card {
+            background: #fffdf6;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            box-shadow: var(--shadow-sm);
+        }
+        .staff-name { border-bottom: 2px solid var(--olive); letter-spacing: 0.08em; }
+        .stat { border: 1px solid #eee4d0; border-left: 3px solid var(--olive); border-radius: 8px; }
+
+        /* 表單與灰色管理面板統一為紙感 */
+        .add-work-form { background: #f5efe0; border: 1px solid var(--line); border-radius: 14px; }
+        div[style*="f0f0f0"] { background: #f5efe0 !important; border: 1px solid var(--line); border-radius: 14px; }
+
+        /* 輸入框：柔邊、聚焦光圈 */
+        input[type="text"], input[type="password"], input[type="date"], textarea, select {
+            background: #fffdf8;
+            border: 1px solid #d8cdb4 !important;
+            border-radius: 8px !important;
+            color: var(--ink);
+            font-family: inherit;
+            transition: border-color .15s ease, box-shadow .15s ease;
+        }
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--olive) !important;
+            box-shadow: 0 0 0 3px rgba(122,134,99,0.18);
+        }
+
+        /* 按鈕統一手感 */
+        .submit-btn, .cancel-btn, .logout-btn, .work-btn, .password-box button {
+            border-radius: 8px !important;
+            font-family: inherit;
+            letter-spacing: 0.04em;
+            transition: filter .15s ease, transform .15s ease, box-shadow .15s ease;
+        }
+        .submit-btn:hover, .cancel-btn:hover, .logout-btn:hover, .work-btn:hover, .password-box button:hover {
+            filter: brightness(0.93);
+            transform: translateY(-1px);
+        }
+        .submit-btn:active, .work-btn:active { transform: translateY(0); }
+
+        /* 彈窗：磨砂遮罩＋深陰影 */
+        .password-modal { background: rgba(58,52,42,0.45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+        .password-box {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            box-shadow: 0 24px 60px rgba(40,34,24,0.30);
+        }
     </style>
 </head>
 <body>
@@ -634,7 +781,7 @@
             </div>
 
             <div class="announcement-section" style="background: #fce4f1; border-color: #d63384;">
-                <h3>📌 指派工作追蹤</h3>
+                <h3 id="assignBoardHeader" style="cursor: pointer; user-select: none;" onclick="toggleAssignBoard()">▼ 📌 指派工作追蹤</h3>
                 <div id="assignBoard"></div>
             </div>
 
@@ -1629,10 +1776,12 @@
             if (!s) return null;
             let str = String(s);
             const pm = str.indexOf('下午') >= 0;
+            const am = str.indexOf('上午') >= 0;
             str = str.replace('上午', ' ').replace('下午', ' ');
             const d = new Date(str);
             if (isNaN(d.getTime())) return null;
             if (pm && d.getHours() < 12) d.setHours(d.getHours() + 12);
+            if (am && d.getHours() === 12) d.setHours(0); // 上午12點 = 半夜0點
             return d;
         }
 
@@ -2051,6 +2200,7 @@
 
         // 更新工作狀態
         function updateWorkStatus(workId, newStatus) {
+            if (!newStatus) return; // 選到「改狀態」placeholder 時不動作，避免把狀態清成空白
             Object.keys(appData.works).forEach(user => {
                 const work = appData.works[user].find(w => w.id === workId);
                 if (work) {
@@ -2203,7 +2353,7 @@
             }
         }
 
-        // 指派工作追蹤看板（主管專用，未完成卡越久排越前）
+        // 指派工作追蹤看板（主管專用，未完成卡越久排越前；可結案、可收合）
         function renderAssignBoard() {
             const el = document.getElementById('assignBoard');
             if (!el) return;
@@ -2214,6 +2364,20 @@
                     if (w.assignedBy) items.push({ owner: user, work: w });
                 });
             });
+
+            const openItems = items.filter(i => !i.work.assignClosed);
+            const closedItems = items.filter(i => i.work.assignClosed);
+
+            // 標題顯示收合箭頭與未結案數
+            const boardKey = 'assign|board';
+            const boardCollapsed = (boardKey in collapsedSections) ? collapsedSections[boardKey] : false;
+            const header = document.getElementById('assignBoardHeader');
+            if (header) header.textContent = `${boardCollapsed ? '▶' : '▼'} 📌 指派工作追蹤（未結 ${openItems.length}）`;
+
+            if (boardCollapsed) {
+                el.innerHTML = '';
+                return;
+            }
 
             if (items.length === 0) {
                 el.innerHTML = '<p style="color: #999;">目前沒有指派的工作</p>';
@@ -2226,28 +2390,29 @@
                 return d ? Math.floor((now - d) / 86400000) : 0;
             }
 
-            items.sort((a, b) => {
+            openItems.sort((a, b) => {
                 const ad = a.work.status === '完成' ? -1 : daysOf(a.work);
                 const bd = b.work.status === '完成' ? -1 : daysOf(b.work);
                 return bd - ad;
             });
+            closedItems.sort((a, b) => (parseInt(String(b.work.id).slice(0, 13)) || 0) - (parseInt(String(a.work.id).slice(0, 13)) || 0));
 
-            let html = '';
-            items.forEach(item => {
+            function buildAssignItem(item) {
                 const work = item.work;
+                const closed = !!work.assignClosed;
                 const statusClass = work.status === '進行中' ? 'status-doing' : work.status === '等待中' ? 'status-waiting' : 'status-done';
 
                 const progress = Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {});
                 const accepted = progress.find(p => p && p.text === '已確認接案');
                 let acceptBadge = '';
-                if (work.status !== '完成') {
+                if (!closed && work.status !== '完成') {
                     acceptBadge = accepted
                         ? ` <span style="background: #28a745; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">✅ 已接案 ${accepted.time || ''}</span>`
                         : ` <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">⏳ 尚未確認接案</span>`;
                 }
 
                 let warnBadge = '';
-                if (work.status !== '完成') {
+                if (!closed && work.status !== '完成') {
                     const days = daysOf(work);
                     if (days >= 7) {
                         warnBadge = ` <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">🚨 已 ${days} 天未完成</span>`;
@@ -2256,20 +2421,86 @@
                     }
                 }
 
-                const dim = work.status === '完成' ? 'opacity: 0.55;' : '';
-                html += `<div class="announcement-item" style="${dim}">
+                const closedBadge = closed ? ` <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap;">✅ 已結案${work.assignClosedAt ? ' ' + work.assignClosedAt : ''}</span>` : '';
+
+                const actionBtn = currentUser === 'christine'
+                    ? (closed
+                        ? `<button class="work-btn" style="background: #6c757d; color: white;" onclick="reopenAssignedTrack('${item.owner}', '${work.id}')">還原</button>`
+                        : `<button class="work-btn" style="background: #28a745; color: white;" onclick="closeAssignedTrack('${item.owner}', '${work.id}')">結案</button>`)
+                    : '';
+
+                const dim = (closed || work.status === '完成') ? 'opacity: 0.55;' : '';
+                return `<div class="announcement-item" style="${dim}">
                     <div style="flex: 1;">
                         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                             <strong>${staffNames[item.owner] || item.owner}</strong>
-                            <span>${work.title}</span>
-                            <span class="work-status ${statusClass}">${work.status}</span>${acceptBadge}${warnBadge}
+                            <span${closed ? ' style="text-decoration: line-through; color: #888;"' : ''}>${work.title}</span>
+                            <span class="work-status ${statusClass}">${work.status}</span>${closedBadge}${acceptBadge}${warnBadge}
                         </div>
                         <div class="announcement-time">指派時間: ${work.createdAt || ''}${work.note ? '｜備註: ' + work.note : ''}</div>
                     </div>
+                    <div style="display: flex; gap: 5px; margin-left: auto;">${actionBtn}</div>
                 </div>`;
-            });
+            }
+
+            let html = '';
+            openItems.forEach(item => { html += buildAssignItem(item); });
+            if (openItems.length === 0) {
+                html += '<p style="color: #999;">沒有未結案的指派工作</p>';
+            }
+
+            // 已結案的指派收到最下方，可展開查看
+            if (closedItems.length > 0) {
+                const key = 'assign|closed';
+                const collapsed = (key in collapsedSections) ? collapsedSections[key] : true;
+                html += `<div style="cursor: pointer; user-select: none; color: #999; font-weight: bold; padding: 8px 0; border-top: 1px dashed #aaa; margin-top: 8px;" onclick="toggleClosedAssigns()">${collapsed ? '▶' : '▼'} ✅ 已結案的指派 (${closedItems.length})</div>`;
+                if (!collapsed) {
+                    closedItems.forEach(item => { html += buildAssignItem(item); });
+                }
+            }
 
             el.innerHTML = html;
+        }
+
+        // 收合 / 展開整個指派工作追蹤看板（記在本機）
+        function toggleAssignBoard() {
+            const key = 'assign|board';
+            collapsedSections[key] = !((key in collapsedSections) ? collapsedSections[key] : false);
+            localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
+            renderAssignBoard();
+        }
+
+        // 收合 / 展開「已結案的指派」
+        function toggleClosedAssigns() {
+            const key = 'assign|closed';
+            collapsedSections[key] = !((key in collapsedSections) ? collapsedSections[key] : true);
+            localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
+            renderAssignBoard();
+        }
+
+        // 結案指派追蹤（僅主管；只收掉追蹤看板上的卡片，不動生管那邊的工作資料）
+        function closeAssignedTrack(owner, workId) {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以結案');
+                return;
+            }
+            const work = (appData.works[owner] || []).find(w => w.id === workId);
+            if (!work) return;
+            work.assignClosed = true;
+            work.assignClosedAt = new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit' });
+            saveWorks();
+            renderAssignBoard();
+        }
+
+        // 還原已結案的指派追蹤（僅主管）
+        function reopenAssignedTrack(owner, workId) {
+            if (currentUser !== 'christine') return;
+            const work = (appData.works[owner] || []).find(w => w.id === workId);
+            if (!work) return;
+            delete work.assignClosed;
+            delete work.assignClosedAt;
+            saveWorks();
+            renderAssignBoard();
         }
 
         // 公布欄
