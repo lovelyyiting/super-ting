@@ -722,6 +722,45 @@
             }
             .nav-item { width: auto; white-space: nowrap; flex: 0 0 auto; }
         }
+
+        /* 工作分工總表 */
+        .workdiv-table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 13px;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .workdiv-table th {
+            background: #6e7a58;
+            color: #fff;
+            font-weight: 500;
+            letter-spacing: 0.04em;
+            padding: 9px 8px;
+            text-align: left;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+        }
+        .workdiv-table td {
+            border: 1px solid #e2d9c6;
+            padding: 7px 8px;
+            vertical-align: top;
+            line-height: 1.5;
+        }
+        .workdiv-table .wd-cell {
+            cursor: text;
+            min-width: 40px;
+        }
+        .workdiv-table .wd-cell[contenteditable="true"]:hover {
+            background: rgba(122,134,99,0.10);
+        }
+        .workdiv-table .wd-cell:focus {
+            outline: 2px solid #7a8663;
+            outline-offset: -2px;
+            background: #fffdf5;
+        }
     </style>
 </head>
 <body>
@@ -1266,7 +1305,9 @@
             // 被刪除的指派工作（等主管結案或重新指派，每筆獨立節點）
             deletedAssigns: {},
             // 通用看板：異常物料管理、近期重工管理維護（各為陣列，雲端同步）
-            boards: { material: [], rework: [] }
+            boards: { material: [], rework: [] },
+            // 工作分工總表：roster=可被指派的人員名單、rows=每筆工作項目（雲端同步）
+            workDivision: { roster: [], rows: [] }
         };
 
         // Firebase 會把陣列轉物件，讀回來統一轉回陣列（過濾空值）
@@ -1341,6 +1382,11 @@
             appData.deletedAssigns = JSON.parse(localStorage.getItem('deletedAssigns') || '{}');
             const cachedBoards = JSON.parse(localStorage.getItem('boards') || '{}');
             appData.boards = { material: normBoardArr(cachedBoards.material), rework: normBoardArr(cachedBoards.rework) };
+            appData.workDivision = normWorkDivision(JSON.parse(localStorage.getItem('workDivision') || 'null'));
+            // 本機還沒有任何資料時，先塞入預設版本（離線也看得到；上線後以雲端為準）
+            if (!appData.workDivision.rows.length && !appData.workDivision.roster.length) {
+                appData.workDivision = defaultWorkDivision();
+            }
             loadStaffNames();
 
             if (!db) {
@@ -1481,6 +1527,17 @@
                 localStorage.setItem('boards', JSON.stringify(appData.boards));
                 rerenderCurrentView();
             });
+
+            // 工作分工總表：雲端沒有資料時，第一台裝置寫入預設版本（現況展示）
+            db.ref('workDivision').once('value').then(snap => {
+                if (!snap.exists()) db.ref('workDivision').set(defaultWorkDivision());
+            }).catch(e => console.log('工作分工初始化失敗', e));
+            db.ref('workDivision').on('value', snap => {
+                if (!snap.exists()) return; // 雲端尚未建立，維持本機預設，等 once 種子寫入
+                appData.workDivision = normWorkDivision(snap.val());
+                localStorage.setItem('workDivision', JSON.stringify(appData.workDivision));
+                rerenderCurrentView();
+            });
         }
 
         // 儲存人員設定（本機 + 雲端）
@@ -1524,6 +1581,12 @@
             }
         }
 
+        // 儲存工作分工總表（本機 + 雲端）
+        function saveWorkDivision() {
+            localStorage.setItem('workDivision', JSON.stringify(appData.workDivision));
+            if (db) db.ref('workDivision').set(appData.workDivision).catch(e => console.log('雲端儲存失敗', e));
+        }
+
         // 依目前開啟的畫面重新渲染（雲端資料變動時呼叫）
         function rerenderCurrentView() {
             if (document.getElementById('managerView').classList.contains('active')) {
@@ -1533,6 +1596,7 @@
                 renderChat('manager');
                 renderTodos();
                 renderAllBoards('manager');
+                renderWorkDivision('manager');
             } else if (document.getElementById('viewerView').classList.contains('active')) {
                 renderDashboard('viewer');
                 loadAnnouncements('viewer');
@@ -1540,10 +1604,12 @@
                 renderAlerts('viewer');
                 renderChat('viewer');
                 renderAllBoards('viewer');
+                renderWorkDivision('viewer');
             } else if (document.getElementById('staffView').classList.contains('active') && currentUser) {
                 renderStaffView(currentUser);
                 renderChat('staff');
                 renderAllBoards('staff');
+                renderWorkDivision('staff');
             }
         }
 
@@ -1839,6 +1905,7 @@
                 { key: 'chat', label: '💬 聊天室' },
                 { key: 'material', label: '⚠️ 異常物料' },
                 { key: 'rework', label: '🔧 重工維護' },
+                { key: 'workdiv', label: '🗂️ 工作分工' },
                 { key: 'add', label: '➕ 新增工作' },
                 { key: 'works', label: '📋 我的工作' }
             ],
@@ -1849,6 +1916,7 @@
                 { key: 'chat', label: '💬 聊天室' },
                 { key: 'material', label: '⚠️ 異常物料' },
                 { key: 'rework', label: '🔧 重工維護' },
+                { key: 'workdiv', label: '🗂️ 工作分工' },
                 { key: 'todo', label: '📝 待辦清單' },
                 { key: 'assign', label: '📌 指派追蹤' },
                 { key: 'board', label: '🎯 戰情室' },
@@ -1862,6 +1930,7 @@
                 { key: 'chat', label: '💬 聊天室' },
                 { key: 'material', label: '⚠️ 異常物料' },
                 { key: 'rework', label: '🔧 重工維護' },
+                { key: 'workdiv', label: '🗂️ 工作分工' },
                 { key: 'board', label: '👑 全員總覽' }
             ]
         };
@@ -2365,6 +2434,7 @@
                 renderChat('manager');
                 renderTodos();
                 renderAllBoards('manager');
+                renderWorkDivision('manager');
                 applyPage('manager');
             } else if (user === 'penny') {
                 document.getElementById('viewerView').classList.add('active');
@@ -2375,6 +2445,7 @@
                 renderAlerts('viewer');
                 renderChat('viewer');
                 renderAllBoards('viewer');
+                renderWorkDivision('viewer');
                 applyPage('viewer');
             } else {
                 document.getElementById('staffView').classList.add('active');
@@ -2382,6 +2453,7 @@
                 renderStaffView(user);
                 renderChat('staff');
                 renderAllBoards('staff');
+                renderWorkDivision('staff');
                 applyPage('staff');
             }
         }
@@ -3164,6 +3236,7 @@
 
         window.addEventListener('load', function() {
             injectBoardSections();
+            injectWorkDivSections();
             initData();
             attachFormListener();
         });
@@ -4740,6 +4813,305 @@
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, cfg.sheet);
             XLSX.writeFile(workbook, `${cfg.sheet}_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.xlsx`);
+        }
+
+        // ========================= 工作分工總表 =========================
+        // 一張可即時共編的工作分配表：每個欄位可改、可新增/刪除項目、負責人可重新指派。
+        // 人員名單（roster）獨立於系統登入身份，未來有新人直接加進名單即可把項目拉出來重分。
+        const WORKDIV_FIELDS = [
+            { key: 'code', label: '#', w: 62, multiline: false },
+            { key: 'role', label: '角色', w: 90, multiline: false },
+            { key: 'item', label: '工作項目', w: 150, multiline: false },
+            { key: 'desc', label: '工作說明', w: 300, multiline: true },
+            { key: 'level', label: '難易', w: 52, multiline: false },
+            { key: 'time', label: '時間(分)', w: 66, multiline: false },
+            { key: 'freq', label: '頻率', w: 78, multiline: false },
+            { key: 'note', label: '備註', w: 200, multiline: true }
+        ];
+
+        // 已知角色的底色（未知角色用預設色），純視覺分組用
+        const WORKDIV_ROLE_TINT = {
+            '生管A': '#fff7e8', '生管B': '#eef6ff', 'Leader': '#f0f7ee', '主管': '#fdeef5'
+        };
+
+        // Firebase 會把陣列轉物件，統一轉回陣列並補齊欄位
+        function normWorkDivision(v) {
+            v = v || {};
+            const toArr = x => !x ? [] : (Array.isArray(x) ? x.filter(Boolean) : Object.values(x).filter(Boolean));
+            const roster = toArr(v.roster);
+            const rows = toArr(v.rows).map(r => ({
+                id: r.id || (Date.now().toString() + Math.random().toString(36).slice(2, 6)),
+                code: r.code || '', role: r.role || '', item: r.item || '', desc: r.desc || '',
+                level: r.level || '', time: r.time || '', freq: r.freq || '',
+                owner: r.owner || '', note: r.note || ''
+            }));
+            return { roster: roster, rows: rows };
+        }
+
+        // 預設版本（現況展示）：資料來自「生管分工分析表」
+        function defaultWorkDivision() {
+            const roster = ['Stella', 'Faith', 'Christine', 'Penny'];
+            // [code, role, item, desc, level, time, freq, owner, note]
+            const raw = [
+                ['A-1', '生管A', '各產線遠期排程資料整理', '分析主排程(成車)，整理排程草案與差異分析，與Leader確認方向後產出一版與主管定案', '5', '1440', '每月', 'Stella', '⚠ 24hr/月，遠期週幾乎佔滿；流程優化後可再減少時間\n是A最核心的工作'],
+                ['A-2', '生管A', '遠期排程系統調整', '拍板後依確認結果調整SAP系統、更新計畫單，發郵件', '4', '240', '每月', 'Stella', 'A排完最清楚'],
+                ['A-3', '生管A', '遠期對外會議', '出席業務+採購排程確認會議，負責排程細節數字說明', '5', '120', '每月', 'Stella', '主持由Leader or A待確認'],
+                ['A-4', '生管A', '精密機電損耗品通知', '每月發信告知精密機電負責人損耗品採買需求', '2', '30', '每月', 'Stella', '遠期資訊直接延伸'],
+                ['A-5', '生管A', '售服插單評估+售服確認', '評估售服插單對排程影響可否接單；發信給生技提醒售服訂單工時及包裝明細要在何時前完成', '4', '150', '每月', 'Stella', '暫估2.5小時'],
+                ['A-6', '生管A', '工單開立', '確保兩週內工單開立（成車/售服/精密機電），\n含臨時的各種工單(重工等….)\nB近期直接沿用', '2', '30', '每週', 'Stella', ''],
+                ['A-7', '生管A', '轉請購單', '每週一四確認供需平衡後轉需求', '4', '15', '每週2次', 'Stella', '系統調整時也須轉'],
+                ['A-8', '生管A', '工單狀態歸檔確認', '每兩週確認工單狀態並歸檔，再次確保B作業無誤可歸檔', '3', '60', '每兩週', 'Stella', ''],
+                ['A-9', '生管A', '生管目標對齊會議', '每週固定一場，生管共同參與，確認本週目標與進度，近期遇到的困難', '3', '120', '每週', 'Stella', '先暫定'],
+                ['A-10', '生管A', '與採購討論會議', '每週固定一場，生管共同參與，討論與採購物料議題', '3', '120', '每週', 'Stella', '先暫定'],
+                ['A-11', '生管A', '新產品/新車種', '確認MES設定，發郵件告知生產相關單位準備資料', '2', '60', '不定時', 'Stella', ''],
+                ['A-12', '生管A', '異常處理支援', 'B忙不過來時補位；系統/現場異常/跨部門需求', '3', '120', '不定時', 'Stella', 'A最主要的彈性工作'],
+                ['A-13', '生管A', '跨部門溝通協調', '釐清各部門需求、異常協調/處理（含重工工單需求）', '3', '60', '不定時', 'Stella', ''],
+                ['A-14', '生管A', '建BOM-需求', '根據需求者提出料號維護BOM相關資訊', '4', '15', '不定時', 'Stella', ''],
+                ['B-1', '生管B', '協助核對入單遠期', '生管A做完後由生管B再次確認入單是否正確', '2', '30', '每月', 'Faith', ''],
+                ['B-2', '生管B', '執行派工批作業', '每天發放現場派工批，列印提供給現場', '1', '15', '每天', 'Faith', ''],
+                ['B-3', '生管B', 'TECO工單確認', '每天確認精密機電/成車工單現場報工狀況，已完成需TECO', '3', '30', '每天', 'Faith', '確認自己派工/排程結果，資訊結案'],
+                ['B-4', '生管B', '產線進度表追蹤', '各產線落後需注意急出貨批次，告知現場；掌握出貨時程，', '2', '60', '每天', 'Faith', '若有異常無法達交給業務要回饋給A，由A確認影響哪一批訂單\n告知業務何時能滿足'],
+                ['B-5', '生管B', '物料掌握', '整合近、遠期物料狀況，已排程都需確保是否可滿足，與採購掌握物料回饋', '3', '120', '每天', 'Faith', '⚠ 2hr/天；此部分多預抓\n考核期:2026/8/18前須能獨立作業'],
+                ['B-6', '生管B', '缺料報表', '每週一三五發出缺料報表(一四)', '2', '60', '每週3次', 'Faith', '可討論是否減少次數，流程優化後可再減少時間\n考核期:2026/8/18前須能獨立作業'],
+                ['B-7', '生管B', 'Frozen排程', '每週五完成最遲週一發出；從遠期複製後依近期物料調整\n臨時變動異常立刻調整', '3', '240', '每週', 'Faith', 'Leader培訓期帶著做\n考核期:2026/8/18前須能獨立作業'],
+                ['B-8', '生管B', '生管目標對齊會議', '每週固定一場，生管共同參與，確認本週目標與進度', '3', '120', '每週', 'Faith', '先暫定'],
+                ['B-9', '生管B', '與採購討論會議', '每週固定一場，生管共同參與，討論與採購物料議題', '3', '120', '每週', 'Faith', '先暫定'],
+                ['B-10', '生管B', '物料、排程異常處理', '跳批備案，討論決議發郵件', '3', '30', '不定時', 'Faith', '重大異常升級給A或Leader'],
+                ['B-11', '生管B', '回饋已滿足售服', '告知已完成的售服提醒業務可安排出貨', '1', '15', '不定時', 'Faith', ''],
+                ['B-12', '生管B', 'ECN處理', '不定期，工單與計畫單重讀', '3', '30', '不定時', 'Faith', ''],
+                ['B-13', '生管B', '月底工單歸檔', '每月月底最終確認工單狀態並歸檔（非常重要）', '3', '60', '每月', 'Faith', '跨月前一天+確保當月已報工歸檔；A每兩週先確認'],
+                ['D-1', 'Leader', '遠期會議', '最終排程拍板', '5', '240', '每月', 'Christine', '跨部門共識會議'],
+                ['D-2', 'Leader', '生管目標對齊', '目標對齊，確認A/B工作進度與異常提出', '3', '120', '每週', 'Christine', '先暫定'],
+                ['D-3', 'Leader', '與採購討論', '採購討論，掌握物料供需動態', '4', '120', '每週', 'Christine', '先暫定'],
+                ['D-4', 'Leader', '系統異常排查', 'SAP/MES系統異常排查', '5', '120', '每週2次', 'Christine', '先暫定'],
+                ['D-5', 'Leader', 'A、B生管培訓', 'A/B生管提升技能，理解所有生管邏輯層面\n作業相關的連帶關係', '5', '120', '不定時', 'Christine', '實際陪同操作'],
+                ['D-6', 'Leader', '生管SOP建立', '', '4', '240', '不定時', 'Christine', ''],
+                ['D-7', 'Leader', '異常SOP標準化', '常見異常分類建立處理流程，減少每次人工判斷', '5', '180', '不定時', 'Christine', ''],
+                ['D-8', 'Leader', '業務達交率+資訊透明度', '確認達交率定義；建立進度與異常可視化', '5', '180', '不定時', 'Christine', '待討論'],
+                ['D-9', 'Leader', '三現會議', '參與每次三現，掌握問題，判斷是否影響排程', '5', '60', '不定時', 'Christine', ''],
+                ['D-10', 'Leader', '排程跳批彙整評估', '如有物料交期不及或急單，做彙整總記錄釐清頻繁調整原因', '4', '60', '不定時', 'Christine', ''],
+                ['D-11', 'Leader', '年度盤點截止批', '每年一次，確認截止批並召開會議', '3', '60', '每年', 'Christine', ''],
+                ['D-12', 'Leader', '產銷會議', '約25號召開，主持招開會議，整理相關資料', '5', '待定', '每月', 'Christine', ''],
+                ['M-1', '主管', '遠期排程拍板', '出席對外排程會議，最終確認拍板', '5', '待定', '每月', 'Penny', ''],
+                ['M-2', '主管', '重大異常裁決', '物料/產線重大異常，跨部門資源調度', '5', '待定', '不定時', 'Penny', ''],
+                ['M-4', '主管', '經營月會', '主持招開會議，整理相關資料', '5', '待定', '每月', 'Penny', '']
+            ];
+            const rows = raw.map((r, i) => ({
+                id: 'seed_' + i + '_' + r[0],
+                code: r[0], role: r[1], item: r[2], desc: r[3], level: r[4],
+                time: r[5], freq: r[6], owner: r[7], note: r[8]
+            }));
+            return { roster: roster, rows: rows };
+        }
+
+        // 目前可指派的人員名單（roster 為主；把資料裡出現、但名單漏掉的負責人補進來）
+        function workDivRoster() {
+            const wd = appData.workDivision || { roster: [], rows: [] };
+            const set = [];
+            (wd.roster || []).forEach(n => { if (n && set.indexOf(n) < 0) set.push(n); });
+            (wd.rows || []).forEach(r => { if (r.owner && set.indexOf(r.owner) < 0) set.push(r.owner); });
+            return set;
+        }
+
+        // 把工作分工區塊注入三個視圖（所有人都看得到、登入後可編輯）
+        function injectWorkDivSections() {
+            ['staff', 'manager', 'viewer'].forEach(view => {
+                const box = document.getElementById(view + 'Pages');
+                if (!box) return;
+                if (document.getElementById(view + '_workdiv_wrap')) return;
+                const wrap = document.createElement('div');
+                wrap.className = 'announcement-section';
+                wrap.setAttribute('data-page', 'workdiv');
+                wrap.id = view + '_workdiv_wrap';
+                wrap.style.cssText = 'background: #f7f4ec; border-color: #c9bd9c;';
+                wrap.innerHTML = `
+                    <h3>🗂️ 工作分工總表</h3>
+                    <p style="color:#8a8172; font-size:13px; margin:-4px 0 12px;">整張表可即時共編：點欄位直接改、可新增/刪除項目，負責人下拉可重新指派。未來有新人加進下方名單即可分配。</p>
+                    <div id="${view}_workdiv_roster" style="margin-bottom:12px;"></div>
+                    <div style="margin-bottom:10px; display:flex; gap:8px; flex-wrap:wrap;">
+                        <button onclick="addWorkDivRow('${view}')" class="submit-btn" style="margin-top:0;">➕ 新增項目</button>
+                        <button onclick="exportWorkDivision()" class="submit-btn" style="margin-top:0; background:#17a2b8;">📥 匯出 Excel</button>
+                    </div>
+                    <div id="${view}_workdiv_summary" style="margin-bottom:10px;"></div>
+                    <div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
+                        <table class="workdiv-table" id="${view}_workdiv_table"></table>
+                    </div>`;
+                box.appendChild(wrap);
+            });
+        }
+
+        function workDivActiveView() {
+            return document.getElementById('staffView').classList.contains('active') ? 'staff' :
+                   document.getElementById('managerView').classList.contains('active') ? 'manager' :
+                   document.getElementById('viewerView').classList.contains('active') ? 'viewer' : null;
+        }
+
+        // 重繪目前開著的視圖（雲端更新後用）
+        function refreshWorkDivision() {
+            const view = workDivActiveView();
+            if (view) renderWorkDivision(view);
+        }
+
+        function renderWorkDivision(view) {
+            const table = document.getElementById(view + '_workdiv_table');
+            if (!table) return;
+            // 正在編輯（游標在本表格內）時先不覆蓋，避免打字被雲端同步打斷
+            const ae = document.activeElement;
+            if (ae && table.contains(ae) && (ae.isContentEditable || ae.tagName === 'SELECT')) return;
+
+            const canEdit = !!currentUser;
+            const rows = (appData.workDivision.rows || []);
+            const roster = workDivRoster();
+
+            renderWorkDivRoster(view, roster, canEdit);
+            renderWorkDivSummary(view, rows, roster);
+
+            const editAttr = canEdit ? 'contenteditable="true"' : '';
+            const head = '<thead><tr>' +
+                WORKDIV_FIELDS.map(f => `<th style="min-width:${f.w}px;">${f.label}</th>`).join('') +
+                '<th style="min-width:110px;">負責人</th>' +
+                (canEdit ? '<th style="min-width:50px;">操作</th>' : '') +
+                '</tr></thead>';
+
+            let body = '';
+            if (!rows.length) {
+                body = `<tbody><tr><td colspan="${WORKDIV_FIELDS.length + (canEdit ? 2 : 1)}" style="text-align:center; color:#999; padding:20px;">目前沒有項目，點「➕ 新增項目」開始</td></tr></tbody>`;
+            } else {
+                body = '<tbody>' + rows.map(r => {
+                    const tint = WORKDIV_ROLE_TINT[r.role] || '#ffffff';
+                    const cells = WORKDIV_FIELDS.map(f => {
+                        const val = boardEsc(r[f.key]);
+                        const ml = f.multiline ? ' white-space:pre-wrap;' : '';
+                        const align = (f.key === 'code' || f.key === 'level' || f.key === 'time') ? ' text-align:center;' : '';
+                        return `<td class="wd-cell" style="${ml}${align}" ${editAttr} data-id="${r.id}" data-field="${f.key}" onblur="editWorkDivCell('${r.id}','${f.key}',this)">${val}</td>`;
+                    }).join('');
+                    const ownerSel = canEdit
+                        ? `<select onchange="reassignWorkDiv('${r.id}', this.value)" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:5px; background:#fff;">
+                                ${roster.map(n => `<option value="${boardEsc(n)}"${n === r.owner ? ' selected' : ''}>${boardEsc(n)}</option>`).join('')}
+                                ${roster.indexOf(r.owner) < 0 && r.owner ? `<option value="${boardEsc(r.owner)}" selected>${boardEsc(r.owner)}</option>` : ''}
+                           </select>`
+                        : `<strong>${boardEsc(r.owner)}</strong>`;
+                    const opCell = canEdit ? `<td style="text-align:center;"><button class="work-btn delete-btn" style="padding:4px 8px;" onclick="deleteWorkDivRow('${r.id}')">🗑</button></td>` : '';
+                    return `<tr style="background:${tint};">${cells}<td>${ownerSel}</td>${opCell}</tr>`;
+                }).join('') + '</tbody>';
+            }
+            table.innerHTML = head + body;
+        }
+
+        // 人員名單（可新增／移除，未來有新人直接加）
+        function renderWorkDivRoster(view, roster, canEdit) {
+            const el = document.getElementById(view + '_workdiv_roster');
+            if (!el) return;
+            const chips = roster.map(n => {
+                const cnt = (appData.workDivision.rows || []).filter(r => r.owner === n).length;
+                const rm = canEdit ? ` <span style="cursor:pointer; color:#b0736a;" title="移除" onclick="removeWorkDivPerson('${boardEsc(n)}')">✕</span>` : '';
+                return `<span style="display:inline-flex; align-items:center; gap:6px; background:#efe9dc; border:1px solid #d8cdb2; border-radius:14px; padding:4px 12px; font-size:13px;">👤 ${boardEsc(n)} <span style="color:#8a8172;">(${cnt})</span>${rm}</span>`;
+            }).join(' ');
+            const addBtn = canEdit ? `<button onclick="addWorkDivPerson('${view}')" class="work-btn" style="background:#7a8663; color:white;">➕ 新增人員</button>` : '';
+            el.innerHTML = `<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><span style="color:#5f6b4a; font-weight:bold;">人員名單：</span>${chips || '<span style="color:#999;">尚無人員</span>'} ${addBtn}</div>`;
+        }
+
+        // 每位人員的工作量小計（項目數＋合計分鐘），方便調度時看誰負擔重
+        function renderWorkDivSummary(view, rows, roster) {
+            const el = document.getElementById(view + '_workdiv_summary');
+            if (!el) return;
+            const stat = {};
+            roster.forEach(n => stat[n] = { count: 0, mins: 0 });
+            rows.forEach(r => {
+                if (!stat[r.owner]) stat[r.owner] = { count: 0, mins: 0 };
+                stat[r.owner].count++;
+                const m = parseInt(r.time, 10);
+                if (!isNaN(m)) stat[r.owner].mins += m;
+            });
+            const cards = Object.keys(stat).map(n =>
+                `<span style="background:#fff; border:1px solid #e2d9c6; border-radius:8px; padding:6px 12px; font-size:13px;"><strong>${boardEsc(n)}</strong>：${stat[n].count} 項・${stat[n].mins} 分</span>`
+            ).join(' ');
+            el.innerHTML = `<div style="display:flex; gap:8px; flex-wrap:wrap;">${cards}</div>`;
+        }
+
+        function getWorkDivRow(id) {
+            return (appData.workDivision.rows || []).find(r => r.id === id) || null;
+        }
+
+        // 編輯任一欄位（失焦時存檔）
+        function editWorkDivCell(id, field, el) {
+            if (!currentUser) return;
+            const r = getWorkDivRow(id);
+            if (!r) return;
+            const val = (el.innerText || '').replace(/ /g, ' ').trim();
+            if (r[field] === val) return; // 沒改就不存
+            r[field] = val;
+            saveWorkDivision();
+        }
+
+        // 重新指派負責人
+        function reassignWorkDiv(id, owner) {
+            if (!currentUser) return;
+            const r = getWorkDivRow(id);
+            if (!r) return;
+            r.owner = owner;
+            saveWorkDivision();
+            refreshWorkDivision();
+        }
+
+        // 新增一列（預設指派給名單第一位）
+        function addWorkDivRow(view) {
+            if (!currentUser) { alert('請先登入'); return; }
+            const roster = workDivRoster();
+            appData.workDivision.rows.push({
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                code: '', role: '', item: '新項目', desc: '', level: '', time: '', freq: '',
+                owner: roster[0] || '', note: ''
+            });
+            saveWorkDivision();
+            renderWorkDivision(view);
+        }
+
+        function deleteWorkDivRow(id) {
+            if (!currentUser) return;
+            const r = getWorkDivRow(id);
+            if (!r) return;
+            if (!confirm(`確定刪除「${r.item || r.code || '這筆'}」嗎？`)) return;
+            appData.workDivision.rows = (appData.workDivision.rows || []).filter(x => x.id !== id);
+            saveWorkDivision();
+            refreshWorkDivision();
+        }
+
+        function addWorkDivPerson(view) {
+            if (!currentUser) { alert('請先登入'); return; }
+            openInputModal('➕ 新增可指派人員', '', function(name) {
+                name = (name || '').trim();
+                if (!name) return;
+                if (!Array.isArray(appData.workDivision.roster)) appData.workDivision.roster = [];
+                if (appData.workDivision.roster.indexOf(name) >= 0) { alert('名單已有這個人'); return; }
+                appData.workDivision.roster.push(name);
+                saveWorkDivision();
+                renderWorkDivision(view);
+            });
+        }
+
+        function removeWorkDivPerson(name) {
+            if (!currentUser) return;
+            const cnt = (appData.workDivision.rows || []).filter(r => r.owner === name).length;
+            if (cnt > 0) { alert(`${name} 名下還有 ${cnt} 項工作，請先把工作重新指派給別人再移除。`); return; }
+            if (!confirm(`確定把 ${name} 從名單移除嗎？`)) return;
+            appData.workDivision.roster = (appData.workDivision.roster || []).filter(n => n !== name);
+            saveWorkDivision();
+            refreshWorkDivision();
+        }
+
+        // 匯出工作分工總表為 Excel
+        function exportWorkDivision() {
+            const rows = (appData.workDivision.rows || []);
+            if (!rows.length) { alert('目前沒有可匯出的項目'); return; }
+            const data = rows.map(r => ({
+                '#': r.code, '角色': r.role, '工作項目': r.item, '工作說明': r.desc,
+                '難易': r.level, '時間(分)': r.time, '頻率': r.freq, '負責人': r.owner, '備註': r.note
+            }));
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, '工作分配總表');
+            XLSX.writeFile(workbook, `生管工作分工總表_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.xlsx`);
         }
     </script>
 </body>
