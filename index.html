@@ -4581,7 +4581,31 @@
             const el = document.getElementById(`${view}_${boardKey}_list`);
             if (!el) return;
             const items = boardSorted(boardKey);
-            el.innerHTML = items.length ? items.map(it => renderBoardItem(boardKey, it)).join('') : '<p style="color: #999;">目前沒有項目</p>';
+
+            // 已結案獨立收到最下方，預設收合（同出貨需求的收合列）
+            const openItems = items.filter(it => it.status !== 'closed');
+            const closedItems = items.filter(it => it.status === 'closed');
+
+            let html = openItems.length ? openItems.map(it => renderBoardItem(boardKey, it)).join('') : '<p style="color: #999;">目前沒有項目</p>';
+
+            if (closedItems.length > 0) {
+                const key = 'board|' + boardKey + '|closed';
+                const collapsed = (key in collapsedSections) ? collapsedSections[key] : true;
+                html += `<div style="cursor: pointer; user-select: none; color: #999; font-weight: bold; padding: 8px 0; border-top: 1px dashed #aaa; margin-top: 8px;" onclick="toggleClosedBoard('${boardKey}')">${collapsed ? '▶' : '▼'} ✅ 已結案 (${closedItems.length})</div>`;
+                if (!collapsed) {
+                    html += closedItems.map(it => renderBoardItem(boardKey, it)).join('');
+                }
+            }
+            el.innerHTML = html;
+        }
+
+        // 切換看板「已結案」收合（記在本機）
+        function toggleClosedBoard(boardKey) {
+            const key = 'board|' + boardKey + '|closed';
+            const cur = (key in collapsedSections) ? collapsedSections[key] : true;
+            collapsedSections[key] = !cur;
+            localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
+            refreshBoard(boardKey);
         }
 
         function renderBoardItem(boardKey, it) {
