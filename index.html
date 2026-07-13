@@ -4950,10 +4950,10 @@
                 wrap.style.cssText = 'background: #f7f4ec; border-color: #c9bd9c;';
                 wrap.innerHTML = `
                     <h3>🗂️ 工作分工總表</h3>
-                    <p style="color:#8a8172; font-size:13px; margin:-4px 0 12px;">整張表可即時共編：點欄位直接改、可新增/刪除項目，負責人下拉可重新指派。未來有新人加進下方名單即可分配。</p>
+                    <p id="${view}_workdiv_hint" style="color:#8a8172; font-size:13px; margin:-4px 0 12px;"></p>
                     <div id="${view}_workdiv_roster" style="margin-bottom:12px;"></div>
                     <div style="margin-bottom:10px; display:flex; gap:8px; flex-wrap:wrap;">
-                        <button onclick="addWorkDivRow('${view}')" class="submit-btn" style="margin-top:0;">➕ 新增項目</button>
+                        <button id="${view}_workdiv_addbtn" onclick="addWorkDivRow('${view}')" class="submit-btn" style="margin-top:0; display:none;">➕ 新增項目</button>
                         <button onclick="exportWorkDivision()" class="submit-btn" style="margin-top:0; background:#17a2b8;">📥 匯出 Excel</button>
                     </div>
                     <div id="${view}_workdiv_summary" style="margin-bottom:10px;"></div>
@@ -4983,9 +4983,17 @@
             const ae = document.activeElement;
             if (ae && table.contains(ae) && (ae.isContentEditable || ae.tagName === 'SELECT')) return;
 
-            const canEdit = !!currentUser;
+            // 只有主管（Christine）能修改，其他人唯讀
+            const canEdit = currentUser === 'christine';
             const rows = (appData.workDivision.rows || []);
             const roster = workDivRoster();
+
+            const hint = document.getElementById(view + '_workdiv_hint');
+            if (hint) hint.textContent = canEdit
+                ? '主管可即時編輯：點欄位直接改、可新增/刪除項目，負責人下拉可重新指派。未來有新人加進下方名單即可分配。'
+                : '此表由主管維護分配，大家可隨時查看最新版（唯讀）。';
+            const addBtn = document.getElementById(view + '_workdiv_addbtn');
+            if (addBtn) addBtn.style.display = canEdit ? '' : 'none';
 
             renderWorkDivRoster(view, roster, canEdit);
             renderWorkDivSummary(view, rows, roster);
@@ -5057,9 +5065,9 @@
             return (appData.workDivision.rows || []).find(r => r.id === id) || null;
         }
 
-        // 編輯任一欄位（失焦時存檔）
+        // 編輯任一欄位（失焦時存檔；僅主管）
         function editWorkDivCell(id, field, el) {
-            if (!currentUser) return;
+            if (currentUser !== 'christine') return;
             const r = getWorkDivRow(id);
             if (!r) return;
             const val = (el.innerText || '').replace(/ /g, ' ').trim();
@@ -5068,9 +5076,9 @@
             saveWorkDivision();
         }
 
-        // 重新指派負責人
+        // 重新指派負責人（僅主管）
         function reassignWorkDiv(id, owner) {
-            if (!currentUser) return;
+            if (currentUser !== 'christine') return;
             const r = getWorkDivRow(id);
             if (!r) return;
             r.owner = owner;
@@ -5078,9 +5086,9 @@
             refreshWorkDivision();
         }
 
-        // 新增一列（預設指派給名單第一位）
+        // 新增一列（預設指派給名單第一位；僅主管）
         function addWorkDivRow(view) {
-            if (!currentUser) { alert('請先登入'); return; }
+            if (currentUser !== 'christine') { alert('只有主管可以修改工作分工'); return; }
             const roster = workDivRoster();
             appData.workDivision.rows.push({
                 id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
@@ -5092,7 +5100,7 @@
         }
 
         function deleteWorkDivRow(id) {
-            if (!currentUser) return;
+            if (currentUser !== 'christine') { alert('只有主管可以修改工作分工'); return; }
             const r = getWorkDivRow(id);
             if (!r) return;
             if (!confirm(`確定刪除「${r.item || r.code || '這筆'}」嗎？`)) return;
@@ -5102,7 +5110,7 @@
         }
 
         function addWorkDivPerson(view) {
-            if (!currentUser) { alert('請先登入'); return; }
+            if (currentUser !== 'christine') { alert('只有主管可以修改工作分工'); return; }
             openInputModal('➕ 新增可指派人員', '', function(name) {
                 name = (name || '').trim();
                 if (!name) return;
@@ -5115,7 +5123,7 @@
         }
 
         function removeWorkDivPerson(name) {
-            if (!currentUser) return;
+            if (currentUser !== 'christine') { alert('只有主管可以修改工作分工'); return; }
             const cnt = (appData.workDivision.rows || []).filter(r => r.owner === name).length;
             if (cnt > 0) { alert(`${name} 名下還有 ${cnt} 項工作，請先把工作重新指派給別人再移除。`); return; }
             if (!confirm(`確定把 ${name} 從名單移除嗎？`)) return;
