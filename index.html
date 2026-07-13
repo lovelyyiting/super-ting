@@ -1397,6 +1397,11 @@
             // 監聽連線狀態
             db.ref('.info/connected').on('value', snap => setSyncStatus(snap.val() === true));
 
+            // 出貨需求/看板轉成「每筆獨立節點」格式（已是新格式就不動作）
+            migrateListToNodes('shipments');
+            migrateListToNodes('boards/material');
+            migrateListToNodes('boards/rework');
+
             // 每日自動備份：當天第一台開啟的裝置把全部資料存一份快照，保留最近 14 天
             db.ref('backups/lastDate').once('value').then(snap => {
                 const today = new Date().toISOString().slice(0, 10);
@@ -1579,6 +1584,57 @@
             } else {
                 db.ref('boards').set(appData.boards).catch(e => console.log('雲端儲存失敗', e));
             }
+        }
+
+        // ===== 單筆寫入（避免整包上傳互相覆蓋）=====
+        // 出貨需求/看板改成「每筆項目獨立節點」：結案只寫那一筆，
+        // 別台裝置手上的舊清單就蓋不掉最新狀態（同聊天室的做法）
+
+        // 儲存單筆出貨需求（本機 + 雲端只寫這一筆）
+        function saveShipmentItem(ship) {
+            localStorage.setItem('shipments', JSON.stringify(appData.shipments));
+            if (db && ship && ship.id) db.ref('shipments/' + ship.id).set(ship).catch(e => console.log('雲端儲存失敗', e));
+        }
+
+        // 刪除單筆出貨需求的雲端節點
+        function removeShipmentNode(id) {
+            localStorage.setItem('shipments', JSON.stringify(appData.shipments));
+            if (db && id) db.ref('shipments/' + id).remove().catch(e => console.log('雲端儲存失敗', e));
+        }
+
+        // 儲存單筆看板項目（本機 + 雲端只寫這一筆）
+        function saveBoardItemNode(boardKey, item) {
+            localStorage.setItem('boards', JSON.stringify(appData.boards));
+            if (db && item && item.id) db.ref('boards/' + boardKey + '/' + item.id).set(item).catch(e => console.log('雲端儲存失敗', e));
+        }
+
+        // 刪除單筆看板項目的雲端節點
+        function removeBoardItemNode(boardKey, id) {
+            localStorage.setItem('boards', JSON.stringify(appData.boards));
+            if (db && id) db.ref('boards/' + boardKey + '/' + id).remove().catch(e => console.log('雲端儲存失敗', e));
+        }
+
+        // 一次性搬家：把「整包陣列」格式的雲端清單改成「id 當 key 的獨立節點」
+        // 已是新格式就什麼都不做；每次開站都檢查，舊版頁面寫回陣列也會自動修復
+        function migrateListToNodes(path) {
+            if (!db) return;
+            db.ref(path).once('value').then(snap => {
+                const v = snap.val();
+                if (!v) return;
+                const entries = Array.isArray(v) ? v : Object.values(v);
+                const keys = Array.isArray(v) ? null : Object.keys(v);
+                const isLegacy = Array.isArray(v) || keys.some((k, i) => {
+                    const it = v[k];
+                    return it && it.id && String(it.id) !== String(k);
+                });
+                if (!isLegacy) return;
+                const obj = {};
+                entries.filter(Boolean).forEach((it, i) => {
+                    if (!it.id) it.id = Date.now().toString() + '_mig' + i;
+                    obj[it.id] = it;
+                });
+                db.ref(path).set(obj).catch(e => console.log('資料搬家失敗', e));
+            }).catch(e => console.log('資料搬家檢查失敗', e));
         }
 
         // 儲存工作分工總表（本機 + 雲端）
@@ -4227,15 +4283,16 @@
 
             const authorName = view === 'manager' ? 'Christine' : view === 'viewer' ? 'Penny' : staffNames[currentUser];
 
-            appData.shipments.push({
+            const newShip = {
                 id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 date: date,
                 text: text.trim(),
                 author: authorName,
                 time: new Date().toLocaleString('zh-TW')
-            });
+            };
+            appData.shipments.push(newShip);
 
-            saveShipments();
+            saveShipmentItem(newShip);
             document.getElementById(dateId).value = '';
             document.getElementById(textId).value = '';
             loadShipments(view);
@@ -4250,7 +4307,7 @@
 
             if (confirm('確定要刪除這筆出貨需求嗎？')) {
                 appData.shipments = appData.shipments.filter(s => s.id !== shipId);
-                saveShipments();
+                removeShipmentNode(shipId);
 
                 const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
                                   document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
@@ -4273,7 +4330,7 @@
                     text: text.trim(),
                     time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
                 });
-                saveShipments();
+                saveShipmentItem(ship);
                 const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
                                   document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
                 loadShipments(currentView);
@@ -4290,7 +4347,7 @@
             if (!ship) return;
             let updates = Array.isArray(ship.updates) ? ship.updates : Object.values(ship.updates || {});
             ship.updates = updates.filter(u => u && u.uid !== uid);
-            saveShipments();
+            saveShipmentItem(ship);
             const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
                               document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
             loadShipments(currentView);
@@ -4309,7 +4366,7 @@
                 ship.closedBy = currentDisplayName();
                 ship.closedAt = new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
             }
-            saveShipments();
+            saveShipmentItem(ship);
             const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
                               document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
             loadShipments(currentView);
@@ -4395,7 +4452,7 @@
             }
 
             closeShipDateModal();
-            saveShipments();
+            saveShipmentItem(ship);
             const currentView = document.getElementById('staffView').classList.contains('active') ? 'staff' :
                               document.getElementById('managerView').classList.contains('active') ? 'manager' : 'viewer';
             loadShipments(currentView);
@@ -4683,7 +4740,7 @@
             const note = noteEl ? (noteEl.value || '').trim() : '';
 
             if (!Array.isArray(appData.boards[boardKey])) appData.boards[boardKey] = boardItems(boardKey);
-            appData.boards[boardKey].push({
+            const newItem = {
                 id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 values: values,
                 note: note,
@@ -4692,8 +4749,9 @@
                 author: currentDisplayName(),
                 time: new Date().toLocaleString('zh-TW'),
                 replies: []
-            });
-            saveBoards(boardKey);
+            };
+            appData.boards[boardKey].push(newItem);
+            saveBoardItemNode(boardKey, newItem);
 
             cfg.fields.forEach(f => { const el = document.getElementById(`${view}_${boardKey}_${f.key}`); if (el) el.value = ''; });
             if (noteEl) noteEl.value = '';
@@ -4710,7 +4768,7 @@
             const it = getBoardItem(boardKey, id);
             if (!it) return;
             it.remind = !it.remind;
-            saveBoards(boardKey);
+            saveBoardItemNode(boardKey, it);
             refreshBoard(boardKey);
         }
 
@@ -4728,7 +4786,7 @@
                 it.closedBy = currentDisplayName();
                 it.closedAt = new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
             }
-            saveBoards(boardKey);
+            saveBoardItemNode(boardKey, it);
             refreshBoard(boardKey);
         }
 
@@ -4746,7 +4804,7 @@
                     text: text.trim(),
                     time: new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
                 });
-                saveBoards(boardKey);
+                saveBoardItemNode(boardKey, it);
                 refreshBoard(boardKey);
             });
         }
@@ -4758,7 +4816,7 @@
             if (!it) return;
             const replies = Array.isArray(it.replies) ? it.replies : Object.values(it.replies || {});
             it.replies = replies.filter(r => r && r.uid !== uid);
-            saveBoards(boardKey);
+            saveBoardItemNode(boardKey, it);
             refreshBoard(boardKey);
         }
 
@@ -4767,7 +4825,7 @@
             if (currentUser !== 'christine') { alert('只有主管可以刪除'); return; }
             if (!confirm('確定要刪除這筆項目嗎？')) return;
             appData.boards[boardKey] = boardItems(boardKey).filter(it => it.id !== id);
-            saveBoards(boardKey);
+            removeBoardItemNode(boardKey, id);
             refreshBoard(boardKey);
         }
 
@@ -4810,7 +4868,7 @@
             const noteEl = document.getElementById('boardEdit_note');
             it.note = noteEl ? (noteEl.value || '').trim() : '';
             const boardKey = editingBoardKey;
-            saveBoards(boardKey);
+            saveBoardItemNode(boardKey, it);
             closeBoardEditModal();
             refreshBoard(boardKey);
         }
