@@ -994,6 +994,19 @@
                     <button onclick="exportToExcel()" class="submit-btn">📥 導出 Excel</button>
                     <button onclick="generateWeekReport()" class="submit-btn" style="background: #17a2b8;">📈 產生週報</button>
                 </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">
+                    <label style="font-weight: bold;">📅 每日作業報告：</label>
+                    <select id="dayReportDays" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <option value="1">今天</option>
+                        <option value="3">最近 3 天</option>
+                        <option value="7" selected>最近 7 天</option>
+                        <option value="14">最近 14 天</option>
+                        <option value="30">最近 30 天</option>
+                    </select>
+                    <button onclick="generateDayReport()" class="submit-btn" style="margin-top: 0; background: #6f42c1;">📋 產生日報</button>
+                    <button onclick="exportDayReport()" class="submit-btn" style="margin-top: 0; background: #17a2b8;">📥 匯出明細 Excel</button>
+                </div>
+                <p style="color: #888; font-size: 12px; margin-top: 8px;">依每天實際動作（接案/開始/進度/完成）列出各人作業項目。被移轉的工作只算在目前負責人身上；已刪除的不列入。</p>
             </div>
 
             <div data-page="data" style="background: #fff3f3; padding: 20px; border-radius: 8px; margin-top: 30px; border: 1px solid #f5c6cb;">
@@ -3256,6 +3269,132 @@
             } else {
                 alert('此瀏覽器不支援自動複製，請手動選取文字');
             }
+        }
+
+        // ===== 每日作業報告（選天數；依當天實際動作歸屬目前負責人）=====
+        // 解析沒有年份的短日期（進度記錄的 07/13 09:30 格式），取不超過今天的最近一次
+        function parseShortZhDate(s) {
+            if (!s) return null;
+            const m = String(s).match(/^(\d{1,2})\/(\d{1,2})/);
+            if (!m) return null;
+            const now = new Date();
+            let d = new Date(now.getFullYear(), parseInt(m[1]) - 1, parseInt(m[2]));
+            if (d.getTime() - now.getTime() > 86400000) d = new Date(now.getFullYear() - 1, parseInt(m[1]) - 1, parseInt(m[2]));
+            return d;
+        }
+
+        // 完整或短格式時間字串 → 當天零點的 Date（解析不了回傳 null）
+        // 沒有 4 位數年份的（例如進度記錄的 07/15 09:30）一律走短格式解析，避免年份被猜錯
+        function anyZhDateToDay(s) {
+            if (!s) return null;
+            let d = /\d{4}/.test(String(s)) ? parseZhDate(s) : parseShortZhDate(s);
+            if (!d || isNaN(d.getTime())) return null;
+            return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        }
+
+        // 收集一件工作在期間內的每日動作（接案/開始/進度/完成）
+        function workDayEvents(work, fromDay) {
+            const events = [];
+            const add = (timeStr, action, detail) => {
+                const day = anyZhDateToDay(timeStr);
+                if (day && day >= fromDay) events.push({ day: day.getTime(), action: action, detail: detail || '', time: timeStr });
+            };
+            add(work.createdAt, '📥 接案', work.title);
+            add(work.startedAt, '▶️ 開始作業', work.title);
+            add(work.completedAt, '✅ 完成', work.title);
+            (Array.isArray(work.progress) ? work.progress : Object.values(work.progress || {})).forEach(p => {
+                if (p && p.time) add(p.time, '🔄 進度', p.text || '');
+            });
+            return events;
+        }
+
+        // 整理期間內「每天 → 每人 → 動作清單」的資料（給日報與匯出共用）
+        // 工作掛在誰名下就算誰的：被移轉的只會出現在新負責人底下，被刪除的不在資料裡
+        function collectDayReport(days) {
+            const now = new Date();
+            const fromDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1));
+            const byDay = {}; // dayTs → user → [{action, detail, title, status, time}]
+            Object.keys(staffNames).forEach(user => {
+                (appData.works[user] || []).forEach(work => {
+                    workDayEvents(work, fromDay).forEach(ev => {
+                        if (!byDay[ev.day]) byDay[ev.day] = {};
+                        if (!byDay[ev.day][user]) byDay[ev.day][user] = [];
+                        byDay[ev.day][user].push({ action: ev.action, detail: ev.detail, title: work.title, status: work.status, time: ev.time });
+                    });
+                });
+            });
+            return byDay;
+        }
+
+        function generateDayReport() {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以產生日報');
+                return;
+            }
+            const days = parseInt(document.getElementById('dayReportDays').value) || 7;
+            const byDay = collectDayReport(days);
+            const dayKeys = Object.keys(byDay).map(Number).sort((a, b) => b - a); // 新的日期在前
+
+            const weekNames = ['日', '一', '二', '三', '四', '五', '六'];
+            const lines = [`📅 每日作業報告（${days === 1 ? '今天' : '最近 ' + days + ' 天'}）`, '（被移轉的工作算在目前負責人身上；已刪除的不列入）', ''];
+
+            if (dayKeys.length === 0) lines.push('這段期間沒有任何作業記錄');
+
+            dayKeys.forEach(ts => {
+                const d = new Date(ts);
+                lines.push(`＝＝ ${d.getMonth() + 1}/${d.getDate()}（${weekNames[d.getDay()]}）＝＝`);
+                Object.keys(staffNames).forEach(user => {
+                    const list = byDay[ts][user];
+                    if (!list || list.length === 0) return;
+                    lines.push(`■ ${staffNames[user]}（${list.length} 項動作）`);
+                    list.forEach(ev => {
+                        const extra = ev.action === '🔄 進度' ? `${ev.title}：${ev.detail}` : ev.detail;
+                        lines.push(`　${ev.action}　${extra}`);
+                    });
+                });
+                lines.push('');
+            });
+
+            document.getElementById('weekReportContent').textContent = lines.join('\n');
+            document.getElementById('weekReportModal').classList.add('active');
+        }
+
+        function exportDayReport() {
+            if (currentUser !== 'christine') {
+                alert('只有主管可以匯出日報');
+                return;
+            }
+            const days = parseInt(document.getElementById('dayReportDays').value) || 7;
+            const byDay = collectDayReport(days);
+            const dayKeys = Object.keys(byDay).map(Number).sort((a, b) => b - a);
+            if (dayKeys.length === 0) {
+                alert('這段期間沒有任何作業記錄');
+                return;
+            }
+            const weekNames = ['日', '一', '二', '三', '四', '五', '六'];
+            const data = [];
+            dayKeys.forEach(ts => {
+                const d = new Date(ts);
+                const dateStr = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}（${weekNames[d.getDay()]}）`;
+                Object.keys(staffNames).forEach(user => {
+                    (byDay[ts][user] || []).forEach(ev => {
+                        data.push({
+                            '日期': dateStr,
+                            '生管': staffNames[user],
+                            '工作名稱': ev.title,
+                            '動作': ev.action.replace(/^[^ ]+ /, ''),
+                            '內容': ev.action === '🔄 進度' ? ev.detail : '',
+                            '時間': ev.time || '',
+                            '目前狀態': ev.status
+                        });
+                    });
+                });
+            });
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            worksheet['!cols'] = [{ wch: 16 }, { wch: 10 }, { wch: 25 }, { wch: 10 }, { wch: 40 }, { wch: 18 }, { wch: 8 }];
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, '每日作業');
+            XLSX.writeFile(workbook, `每日作業報告_最近${days}天_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.xlsx`);
         }
 
         // 主管專用：備份並清除所有已完成工作
