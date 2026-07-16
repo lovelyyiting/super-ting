@@ -3319,7 +3319,7 @@
                     workDayEvents(work, fromDay).forEach(ev => {
                         if (!byDay[ev.day]) byDay[ev.day] = {};
                         if (!byDay[ev.day][user]) byDay[ev.day][user] = [];
-                        byDay[ev.day][user].push({ action: ev.action, detail: ev.detail, title: work.title, status: work.status, time: ev.time });
+                        byDay[ev.day][user].push({ action: ev.action, detail: ev.detail, title: work.title, status: work.status, time: ev.time, work: work });
                     });
                 });
             });
@@ -3346,11 +3346,40 @@
                 Object.keys(staffNames).forEach(user => {
                     const list = byDay[ts][user];
                     if (!list || list.length === 0) return;
-                    lines.push(`■ ${staffNames[user]}（${list.length} 項動作）`);
-                    list.forEach(ev => {
-                        const extra = ev.action === '🔄 進度' ? `${ev.title}：${ev.detail}` : ev.detail;
-                        lines.push(`　${ev.action}　${extra}`);
-                    });
+
+                    // 依動作分類，先給統計行再列明細（隔天檢討：接多少、完成多少、實際做到哪）
+                    const takes = list.filter(e => e.action === '📥 接案');
+                    const starts = list.filter(e => e.action === '▶️ 開始作業');
+                    const dones = list.filter(e => e.action === '✅ 完成');
+                    const progs = list.filter(e => e.action === '🔄 進度');
+
+                    lines.push(`■ ${staffNames[user]}｜📥 接 ${takes.length} 件・✅ 完成 ${dones.length} 件・🔄 進度更新 ${progs.length} 次`);
+
+                    if (takes.length > 0) {
+                        lines.push(`　📥 當天接案：`);
+                        takes.forEach(e => lines.push(`　　・${e.title}（目前：${e.status}）`));
+                    }
+                    if (starts.length > 0) {
+                        lines.push(`　▶️ 開始作業：`);
+                        starts.forEach(e => lines.push(`　　・${e.title}（目前：${e.status}）`));
+                    }
+                    if (dones.length > 0) {
+                        lines.push(`　✅ 當天完成：`);
+                        dones.forEach(e => {
+                            const net = e.work ? netWorkMs(e.work) : null;
+                            lines.push(`　　・${e.title}${net !== null ? `（實際作業 ${formatDuration(net)}）` : ''}`);
+                        });
+                    }
+                    if (progs.length > 0) {
+                        lines.push(`　🔄 進度更新：`);
+                        progs.forEach(e => lines.push(`　　・${e.title}：${e.detail}`));
+                    }
+
+                    // 當天接了但到現在還沒完成的，特別點出來
+                    const pending = takes.filter(e => e.status !== '完成');
+                    if (pending.length > 0) {
+                        lines.push(`　⏳ 當天接了、目前尚未完成：${pending.map(e => e.title).join('、')}`);
+                    }
                 });
                 lines.push('');
             });
@@ -3372,12 +3401,32 @@
                 return;
             }
             const weekNames = ['日', '一', '二', '三', '四', '五', '六'];
-            const data = [];
+            const stats = [];   // 每日統計：一人一天一列
+            const data = [];    // 動作明細
             dayKeys.forEach(ts => {
                 const d = new Date(ts);
                 const dateStr = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}（${weekNames[d.getDay()]}）`;
                 Object.keys(staffNames).forEach(user => {
-                    (byDay[ts][user] || []).forEach(ev => {
+                    const list = byDay[ts][user] || [];
+                    if (list.length === 0) return;
+
+                    const takes = list.filter(e => e.action === '📥 接案');
+                    const dones = list.filter(e => e.action === '✅ 完成');
+                    const progs = list.filter(e => e.action === '🔄 進度');
+                    const pending = takes.filter(e => e.status !== '完成');
+
+                    stats.push({
+                        '日期': dateStr,
+                        '生管': staffNames[user],
+                        '接案件數': takes.length,
+                        '完成件數': dones.length,
+                        '進度更新次數': progs.length,
+                        '當天接案項目(目前狀態)': takes.map(e => `${e.title}(${e.status})`).join('、'),
+                        '當天完成項目': dones.map(e => e.title).join('、'),
+                        '接了尚未完成': pending.map(e => e.title).join('、')
+                    });
+
+                    list.forEach(ev => {
                         data.push({
                             '日期': dateStr,
                             '生管': staffNames[user],
@@ -3390,10 +3439,13 @@
                     });
                 });
             });
+            const workbook = XLSX.utils.book_new();
+            const statSheet = XLSX.utils.json_to_sheet(stats);
+            statSheet['!cols'] = [{ wch: 16 }, { wch: 10 }, { wch: 9 }, { wch: 9 }, { wch: 12 }, { wch: 40 }, { wch: 30 }, { wch: 30 }];
+            XLSX.utils.book_append_sheet(workbook, statSheet, '每日統計');
             const worksheet = XLSX.utils.json_to_sheet(data);
             worksheet['!cols'] = [{ wch: 16 }, { wch: 10 }, { wch: 25 }, { wch: 10 }, { wch: 40 }, { wch: 18 }, { wch: 8 }];
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, '每日作業');
+            XLSX.utils.book_append_sheet(workbook, worksheet, '動作明細');
             XLSX.writeFile(workbook, `每日作業報告_最近${days}天_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.xlsx`);
         }
 
